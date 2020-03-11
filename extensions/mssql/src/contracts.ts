@@ -674,6 +674,18 @@ export namespace SchemaCompareCancellationRequest {
 
 // ------------------------------- <Schema Compare> -----------------------------
 
+// ------------------------------- <Assessment> -----------------------------
+
+export interface AssessmentInvokeParams {
+	ownerUri: string;
+}
+
+export namespace AssessmentInvokeRequest {
+	export const type = new RequestType<AssessmentInvokeParams, azdata.AssessmentResult, void, void>('assessment/invoke');
+}
+
+// ------------------------------- <Assessment> -----------------------------
+
 // ------------------------------- <Serialization> -----------------------------
 export namespace SerializeDataStartRequest {
 	export const type = new RequestType<azdata.SerializeDataStartRequestParams, azdata.SerializeDataResult, void, void>('serialize/start');

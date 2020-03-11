@@ -41,6 +41,8 @@ declare module 'azdata' {
 
 		export function registerCapabilitiesServiceProvider(provider: CapabilitiesProvider): vscode.Disposable;
 
+		export function registerAssessmentServicesProvider(provider: AssessmentServicesProvider): vscode.Disposable;
+
 		/**
 		 * Get the provider corresponding to the given provider ID and type
 		 * @param providerId The ID that the provider was registered with
@@ -1433,6 +1435,18 @@ declare module 'azdata' {
 		alerts: AgentAlertInfo[];
 	}
 
+	export interface AssessmentResultItem {
+		checkId: string;
+		targetType: number;
+		targetName: string;
+		tags: string[];
+		displayName: string;
+		description: string;
+		message: string;
+		helpLink: string;
+		level: string;
+	}
+
 	export interface AgentNotebookInfo extends AgentJobInfo {
 		templateId: number;
 		targetDatabase: string;
@@ -1619,6 +1633,11 @@ declare module 'azdata' {
 	export interface AgentJobsResult extends ResultStatus {
 		jobs: AgentJobInfo[];
 	}
+	export interface AssessmentResult extends ResultStatus {
+		results: AssessmentResultItem[],
+		rulesetVersion: string,
+		apiVersion: string
+	}
 
 	export interface AgentJobHistoryResult extends ResultStatus {
 		histories: AgentJobHistoryInfo[];
@@ -1797,6 +1816,12 @@ declare module 'azdata' {
 		deleteJobSchedule(ownerUri: string, scheduleInfo: AgentJobScheduleInfo): Thenable<ResultStatus>;
 
 		registerOnUpdated(handler: () => any): void;
+
+
+	}
+
+	export interface AssessmentServicesProvider extends DataProvider {
+		assessmentInvoke(ownerUri: string): Thenable<AssessmentResult>;
 	}
 
 	// DacFx interfaces  -----------------------------------------------------------------------
@@ -4101,7 +4126,8 @@ declare module 'azdata' {
 		CapabilitiesProvider = 'CapabilitiesProvider',
 		ObjectExplorerNodeProvider = 'ObjectExplorerNodeProvider',
 		IconProvider = 'IconProvider',
-		SerializationProvider = 'SerializationProvider'
+		SerializationProvider = 'SerializationProvider',
+		AssessmentServicesProvider = 'AssessmentServicesProvider'
 	}
 
 	/**

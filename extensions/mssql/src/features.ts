@@ -746,7 +746,7 @@ export class AgentServicesFeature extends SqlOpsFeature<undefined> {
 				}
 			);
 		};
-
+		// Job management methods
 		return azdata.dataprotocol.registerAgentServicesProvider({
 			providerId: client.providerId,
 			getJobs,
@@ -851,4 +851,47 @@ export class SerializationFeature extends SqlOpsFeature<undefined> {
 			continueSerialization
 		});
 	}
+}
+
+export class AssessmentServicesFeature extends SqlOpsFeature<undefined> {
+	private static readonly messagesTypes: RPCMessageType[] = [
+		contracts.AssessmentInvokeRequest.type
+	];
+	constructor(client: SqlOpsDataClient) {
+		super(client, AssessmentServicesFeature.messagesTypes);
+	}
+
+	public fillClientCapabilities(capabilities: ClientCapabilities): void {
+		// this isn't explicitly necessary
+		// ensure(ensure(capabilities, 'connection')!, 'agentServices')!.dynamicRegistration = true;
+	}
+
+	public initialize(capabilities: ServerCapabilities): void {
+		this.register(this.messages, {
+			id: UUID.generateUuid(),
+			registerOptions: undefined
+		});
+	}
+
+	protected registerProvider(options: undefined): Disposable {
+		const client = this._client;
+
+		let assessmentInvoke = (ownerUri: string): Thenable<azdata.AssessmentResult> => {
+			let params: contracts.AssessmentInvokeParams = { ownerUri: ownerUri };
+			return client.sendRequest(contracts.AssessmentInvokeRequest.type, params).then(
+				r => r,
+				e => {
+					client.logFailedRequest(contracts.AssessmentInvokeRequest.type, e);
+					return Promise.resolve(undefined);
+				}
+			);
+		};
+
+		return azdata.dataprotocol.registerAssessmentServicesProvider({
+			providerId: client.providerId,
+			assessmentInvoke
+		});
+	}
+
+
 }
