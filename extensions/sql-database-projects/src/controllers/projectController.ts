@@ -4,11 +4,15 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { Project } from '../models/project';
-import { SqlDatabaseProjectTreeViewProvider } from './databaseProjectTreeViewProvider';
 import * as path from 'path';
 import * as constants from '../common/constants';
 import * as dataSources from '../models/dataSources/dataSources';
+
+import { Guid } from 'guid-typescript';
+import { newSqlProjectTemplate } from '../../resources/newSqlprojTemplate';
+import { Project } from '../models/project';
+import { SqlDatabaseProjectTreeViewProvider } from './databaseProjectTreeViewProvider';
+import { promises as fs } from 'fs';
 
 /**
  * Controller for managing project lifecycle
@@ -35,6 +39,29 @@ export class ProjectsController {
 		newProject.dataSources = await dataSources.load(dataSourcesFilePath);
 
 		this.refreshProjectsTree();
+	}
+
+	public async createNewProject(newProjName: string, newProjUri: vscode.Uri) {
+		const macroIndicator = '$$';
+
+		const macroDict: Record<string, string> = {
+			'PROJECT_NAME': newProjName,
+			'PROJECT_GUID': Guid.create().toString()
+		};
+
+		let newProjFile = newSqlProjectTemplate;
+
+		for (const macro in macroDict) {
+
+			// check for values containing the macroIndicator, which could break macro expansion
+			if (macroDict[macro].includes(macroIndicator)) {
+				throw new Error(`New Project value ${macroDict[macro]} is invalid because it contains ${macroIndicator}`);
+			}
+
+			newProjFile.replace(macroIndicator + macro + macroIndicator, macroDict[macro]);
+		}
+
+		await fs.writeFile(newProjUri.fsPath, newProjFile);
 	}
 
 	public refreshProjectsTree() {

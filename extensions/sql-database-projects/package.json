@@ -59,6 +59,7 @@
     }
   },
   "dependencies": {
+    "guid-typescript": "^1.0.9",
     "vscode-nls": "^3.2.1",
     "xml2js": "^0.4.23"
   },
