@@ -41,6 +41,11 @@ export enum EditRowState {
 	dirtyUpdate = 3
 }
 
+export enum ExtensionNodeType {
+	Server = 'Server',
+	Database = 'Database'
+}
+
 export enum TaskStatus {
 	NotStarted = 0,
 	InProgress = 1,
@@ -167,7 +172,9 @@ export enum ModelComponentTypes {
 	DiffEditor,
 	Dom,
 	Hyperlink,
-	Image
+	Image,
+	RadioCardGroup,
+	Separator
 }
 
 export enum ColumnSizingMode {
@@ -196,11 +203,6 @@ export enum StepCompletionAction {
 	QuitWithFailure = 2,
 	GoToNextStep = 3,
 	GoToStep = 4
-}
-
-export enum ExtensionNodeType {
-	Server = 'Server',
-	Database = 'Database'
 }
 
 export interface CheckBoxInfo {
@@ -392,13 +394,14 @@ export class TreeComponentItem extends vsExtTypes.TreeItem {
 export enum AzureResource {
 	ResourceManagement = 0,
 	Sql = 1,
-	OssRdbms = 2
+	OssRdbms = 2,
+	AzureKeyVault = 3
 }
 
 export class TreeItem extends vsExtTypes.TreeItem {
 	label?: string;
-	payload: IConnectionProfile;
-	providerHandle: string;
+	payload?: IConnectionProfile;
+	providerHandle?: string;
 }
 
 export interface ServerInfoOption {

@@ -82,8 +82,7 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 							isReadOnly: true,
 							width: 25,
 							headerCssStyles: {
-								'border': 'none',
-								'background-color': '#FFFFFF'
+								'border': 'none'
 							},
 							rowCssStyles: {
 								'border-top': 'solid 1px #ccc',
@@ -99,7 +98,6 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 							width: 100,
 							headerCssStyles: {
 								'border': 'none',
-								'background-color': '#FFFFFF',
 								...cssStyles.tableHeader
 							},
 							rowCssStyles: {
@@ -116,7 +114,6 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 							width: 150,
 							headerCssStyles: {
 								'border': 'none',
-								'background-color': '#FFFFFF',
 								...cssStyles.tableHeader
 							},
 							rowCssStyles: {
@@ -133,7 +130,6 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 							width: 100,
 							headerCssStyles: {
 								'border': 'none',
-								'background-color': '#FFFFFF',
 								'text-align': 'left',
 								...cssStyles.tableHeader
 							},
@@ -146,13 +142,12 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 						},
 						{ // view details button
 							displayName: '',
-							ariaLabel: loc.viewDetails,
+							ariaLabel: loc.viewErrorDetails,
 							valueType: azdata.DeclarativeDataType.component,
 							isReadOnly: true,
 							width: 150,
 							headerCssStyles: {
-								'border': 'none',
-								'background-color': '#FFFFFF'
+								'border': 'none'
 							},
 							rowCssStyles: {
 								'border-top': 'solid 1px #ccc',
@@ -186,7 +181,6 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 					width: 125,
 					headerCssStyles: {
 						'border': 'none',
-						'background-color': '#FFFFFF',
 						...cssStyles.tableHeader
 					},
 					rowCssStyles: {
@@ -194,7 +188,7 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 						'border-bottom': 'solid 1px #ccc',
 						'border-left': 'none',
 						'border-right': 'none'
-					},
+					}
 				},
 				{ // node metrics
 					displayName: loc.nodeMetrics,
@@ -203,7 +197,6 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 					width: 100,
 					headerCssStyles: {
 						'border': 'none',
-						'background-color': '#FFFFFF',
 						...cssStyles.tableHeader
 					},
 					rowCssStyles: {
@@ -211,7 +204,7 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 						'border-bottom': 'solid 1px #ccc',
 						'border-left': 'none',
 						'border-right': 'none'
-					},
+					}
 				}
 			];
 
@@ -225,7 +218,6 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 					width: 100,
 					headerCssStyles: {
 						'border': 'none',
-						'background-color': '#FFFFFF',
 						'text-align': 'left',
 						...cssStyles.tableHeader
 					},
@@ -246,7 +238,6 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 				width: 100,
 				headerCssStyles: {
 					'border': 'none',
-					'background-color': '#FFFFFF',
 					'text-align': 'left',
 					...cssStyles.tableHeader
 				},
@@ -255,7 +246,7 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 					'border-bottom': 'solid 1px #ccc',
 					'border-left': 'none',
 					'border-right': 'none'
-				},
+				}
 			});
 
 		this.metricsAndLogsRowsTable = this.modelView.modelBuilder.declarativeTable()
@@ -312,6 +303,7 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 				label: loc.view,
 				url: instanceStatus.dashboards.nodeMetricsUrl,
 				title: instanceStatus.dashboards.nodeMetricsUrl,
+				ariaLabel: loc.viewNodeMetrics(instanceStatus.dashboards.nodeMetricsUrl),
 				CSSStyles: { ...cssStyles.text, ...cssStyles.hyperlink }
 			}).component());
 		}
@@ -326,6 +318,7 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 					label: loc.view,
 					url: instanceStatus.dashboards.sqlMetricsUrl,
 					title: instanceStatus.dashboards.sqlMetricsUrl,
+					ariaLabel: loc.viewSqlMetrics(instanceStatus.dashboards.sqlMetricsUrl),
 					CSSStyles: { ...cssStyles.text, ...cssStyles.hyperlink }
 				}).component());
 			}
@@ -338,6 +331,7 @@ export class BdcDashboardResourceStatusPage extends BdcDashboardPage {
 				label: loc.view,
 				url: instanceStatus.dashboards.logsUrl,
 				title: instanceStatus.dashboards.logsUrl,
+				ariaLabel: loc.viewLogs(instanceStatus.dashboards.logsUrl),
 				CSSStyles: { ...cssStyles.text, ...cssStyles.hyperlink }
 			}).component());
 		}

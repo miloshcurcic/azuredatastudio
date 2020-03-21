@@ -6,23 +6,19 @@ import { Registry } from 'vs/platform/registry/common/platform';
 import { EditorDescriptor, IEditorRegistry, Extensions as EditorExtensions } from 'vs/workbench/browser/editor';
 import { SyncDescriptor } from 'vs/platform/instantiation/common/descriptors';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { FileEditorInput } from 'vs/workbench/contrib/files/common/editors/fileEditorInput';
-import { UntitledEditorInput } from 'vs/workbench/common/editor/untitledEditorInput';
 import { localize } from 'vs/nls';
 import { IEditorInputFactoryRegistry, Extensions as EditorInputFactoryExtensions } from 'vs/workbench/common/editor';
 
-import { ILanguageAssociationRegistry, Extensions as LanguageAssociationExtensions } from 'sql/workbench/common/languageAssociation';
-import { UntitledNotebookInput } from 'sql/workbench/contrib/notebook/common/models/untitledNotebookInput';
-import { FileNotebookInput } from 'sql/workbench/contrib/notebook/common/models/fileNotebookInput';
-import { FileNoteBookEditorInputFactory, UntitledNoteBookEditorInputFactory } from 'sql/workbench/contrib/notebook/common/models/nodebookInputFactory';
+import { ILanguageAssociationRegistry, Extensions as LanguageAssociationExtensions } from 'sql/workbench/services/languageAssociation/common/languageAssociation';
+import { UntitledNotebookInput } from 'sql/workbench/contrib/notebook/browser/models/untitledNotebookInput';
+import { FileNotebookInput } from 'sql/workbench/contrib/notebook/browser/models/fileNotebookInput';
+import { FileNoteBookEditorInputFactory, UntitledNoteBookEditorInputFactory, NotebookEditorInputAssociation } from 'sql/workbench/contrib/notebook/browser/models/nodebookInputFactory';
 import { IWorkbenchActionRegistry, Extensions as WorkbenchActionsExtensions } from 'vs/workbench/common/actions';
-import { SyncActionDescriptor, registerAction, MenuRegistry, MenuId } from 'vs/platform/actions/common/actions';
+import { SyncActionDescriptor, registerAction2, MenuRegistry, MenuId, Action2 } from 'vs/platform/actions/common/actions';
 
-import { NotebookInput } from 'sql/workbench/contrib/notebook/browser/models/notebookInput';
 import { NotebookEditor } from 'sql/workbench/contrib/notebook/browser/notebookEditor';
 import { NewNotebookAction } from 'sql/workbench/contrib/notebook/browser/notebookActions';
-import { KeyMod } from 'vs/editor/common/standalone/standaloneBase';
-import { KeyCode } from 'vs/base/common/keyCodes';
+import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
 import { IConfigurationRegistry, Extensions as ConfigExtensions } from 'vs/platform/configuration/common/configurationRegistry';
 import { GridOutputComponent } from 'sql/workbench/contrib/notebook/browser/outputs/gridOutput.component';
 import { PlotlyOutputComponent } from 'sql/workbench/contrib/notebook/browser/outputs/plotlyOutput.component';
@@ -32,20 +28,23 @@ import { IViewletService } from 'vs/workbench/services/viewlet/browser/viewlet';
 import { URI } from 'vs/base/common/uri';
 import { IWorkspaceEditingService } from 'vs/workbench/services/workspaces/common/workspaceEditing';
 import { ContextKeyExpr } from 'vs/platform/contextkey/common/contextkey';
-import { NodeContextKey } from 'sql/workbench/contrib/dataExplorer/browser/nodeContext';
-import { MssqlNodeContext } from 'sql/workbench/contrib/dataExplorer/browser/mssqlNodeContext';
+import { NodeContextKey } from 'sql/workbench/browser/parts/views/nodeContext';
+import { MssqlNodeContext } from 'sql/workbench/services/objectExplorer/browser/mssqlNodeContext';
 import { mssqlProviderName } from 'sql/platform/connection/common/constants';
 import { CommandsRegistry } from 'vs/platform/commands/common/commands';
 import { TreeViewItemHandleArg } from 'sql/workbench/common/views';
 import { ConnectedContext } from 'azdata';
-import { TreeNodeContextKey } from 'sql/workbench/contrib/objectExplorer/common/treeNodeContextKey';
-import { ObjectExplorerActionsContext } from 'sql/workbench/contrib/objectExplorer/browser/objectExplorerActions';
+import { TreeNodeContextKey } from 'sql/workbench/services/objectExplorer/common/treeNodeContextKey';
+import { ObjectExplorerActionsContext } from 'sql/workbench/services/objectExplorer/browser/objectExplorerActions';
 import { ItemContextKey } from 'sql/workbench/contrib/dashboard/browser/widgets/explorer/explorerTreeContext';
 import { ManageActionContext } from 'sql/workbench/browser/actions';
 import { IHostService } from 'vs/workbench/services/host/browser/host';
 import { MarkdownOutputComponent } from 'sql/workbench/contrib/notebook/browser/outputs/markdownOutput.component';
 import { registerCellComponent } from 'sql/platform/notebooks/common/outputRegistry';
 import { TextCellComponent } from 'sql/workbench/contrib/notebook/browser/cellViews/textCell.component';
+import { IWorkbenchContributionsRegistry, Extensions as WorkbenchExtensions } from 'vs/workbench/common/contributions';
+import { NotebookThemingContribution } from 'sql/workbench/contrib/notebook/browser/notebookThemingContribution';
+import { LifecyclePhase } from 'vs/platform/lifecycle/common/lifecycle';
 
 Registry.as<IEditorInputFactoryRegistry>(EditorInputFactoryExtensions.EditorInputFactories)
 	.registerEditorInputFactory(FileNotebookInput.ID, FileNoteBookEditorInputFactory);
@@ -54,26 +53,19 @@ Registry.as<IEditorInputFactoryRegistry>(EditorInputFactoryExtensions.EditorInpu
 	.registerEditorInputFactory(UntitledNotebookInput.ID, UntitledNoteBookEditorInputFactory);
 
 Registry.as<ILanguageAssociationRegistry>(LanguageAssociationExtensions.LanguageAssociations)
-	.registerLanguageAssociation('notebook', (accessor, editor) => {
-		const instantiationService = accessor.get(IInstantiationService);
-		if (editor instanceof FileEditorInput) {
-			return instantiationService.createInstance(FileNotebookInput, editor.getName(), editor.getResource(), editor);
-		} else if (editor instanceof UntitledEditorInput) {
-			return instantiationService.createInstance(UntitledNotebookInput, editor.getName(), editor.getResource(), editor);
-		} else {
-			return undefined;
-		}
-	}, (editor: NotebookInput) => editor.textInput);
+	.registerLanguageAssociation(NotebookEditorInputAssociation.languages, NotebookEditorInputAssociation);
 
 Registry.as<IEditorRegistry>(EditorExtensions.Editors)
 	.registerEditor(new EditorDescriptor(NotebookEditor, NotebookEditor.ID, localize('notebookEditor.name', "Notebook Editor")), [new SyncDescriptor(UntitledNotebookInput), new SyncDescriptor(FileNotebookInput)]);
 
+Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench)
+	.registerWorkbenchContribution(NotebookThemingContribution, LifecyclePhase.Restored);
 
 // Global Actions
 const actionRegistry = Registry.as<IWorkbenchActionRegistry>(WorkbenchActionsExtensions.WorkbenchActions);
 
 actionRegistry.registerWorkbenchAction(
-	new SyncActionDescriptor(
+	SyncActionDescriptor.create(
 		NewNotebookAction,
 		NewNotebookAction.ID,
 		NewNotebookAction.LABEL,
@@ -143,9 +135,15 @@ MenuRegistry.appendMenuItem(MenuId.ExplorerWidgetContext, {
 	order: 1
 });
 
-registerAction({
-	id: 'workbench.action.setWorkspaceAndOpen',
-	handler: async (accessor, options: { forceNewWindow: boolean, folderPath: URI }) => {
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'workbench.action.setWorkspaceAndOpen',
+			title: localize('workbench.action.setWorkspaceAndOpen', "Set Workspace And Open")
+		});
+	}
+
+	run = async (accessor, options: { forceNewWindow: boolean, folderPath: URI }) => {
 		const viewletService = accessor.get(IViewletService);
 		const workspaceEditingService = accessor.get(IWorkspaceEditingService);
 		const hostService = accessor.get(IHostService);
@@ -162,7 +160,7 @@ registerAction({
 		else {
 			return hostService.reload();
 		}
-	}
+	};
 });
 
 const configurationRegistry = Registry.as<IConfigurationRegistry>(ConfigExtensions.Configuration);
@@ -176,14 +174,6 @@ configurationRegistry.registerConfiguration({
 			'default': true,
 			'description': localize('notebook.sqlStopOnError', "SQL kernel: stop Notebook execution when error occurs in a cell.")
 		}
-	}
-});
-
-registerAction({
-	id: 'workbench.books.action.focusBooksExplorer',
-	handler: async (accessor) => {
-		const viewletService = accessor.get(IViewletService);
-		viewletService.openViewlet('workbench.view.extension.books-explorer', true);
 	}
 });
 

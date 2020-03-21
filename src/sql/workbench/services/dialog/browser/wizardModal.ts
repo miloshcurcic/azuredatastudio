@@ -5,7 +5,6 @@
 
 import 'vs/css!./media/dialogModal';
 import { Modal, IModalOptions } from 'sql/workbench/browser/modal/modal';
-import { attachModalDialogStyler } from 'sql/platform/theme/common/styler';
 import { Wizard, DialogButton, WizardPage } from 'sql/workbench/services/dialog/common/dialogTypes';
 import { DialogPane } from 'sql/workbench/services/dialog/browser/dialogPane';
 import { bootstrapAngular } from 'sql/workbench/services/bootstrap/browser/bootstrapService';
@@ -22,10 +21,12 @@ import { IClipboardService } from 'vs/platform/clipboard/common/clipboardService
 import { append, $ } from 'vs/base/browser/dom';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { ILogService } from 'vs/platform/log/common/log';
-import { IWorkbenchLayoutService } from 'vs/workbench/services/layout/browser/layoutService';
-import { ITextResourcePropertiesService } from 'vs/editor/common/services/resourceConfiguration';
+import { ITextResourcePropertiesService } from 'vs/editor/common/services/textResourceConfigurationService';
 import { IAdsTelemetryService } from 'sql/platform/telemetry/common/telemetry';
 import { onUnexpectedError } from 'vs/base/common/errors';
+import { attachModalDialogStyler } from 'sql/workbench/common/styler';
+import { ILayoutService } from 'vs/platform/layout/browser/layoutService';
+import { status } from 'vs/base/browser/ui/aria/aria';
 
 export class WizardModal extends Modal {
 	private _dialogPanes = new Map<WizardPage, DialogPane>();
@@ -36,6 +37,7 @@ export class WizardModal extends Modal {
 	private _body: HTMLElement;
 
 	private _pageContainer: HTMLElement;
+	private _mpContainer: HTMLElement;
 
 	// Buttons
 	private _previousButton: Button;
@@ -46,7 +48,7 @@ export class WizardModal extends Modal {
 		private _wizard: Wizard,
 		name: string,
 		options: IModalOptions,
-		@IWorkbenchLayoutService layoutService: IWorkbenchLayoutService,
+		@ILayoutService layoutService: ILayoutService,
 		@IThemeService themeService: IThemeService,
 		@IAdsTelemetryService telemetryService: IAdsTelemetryService,
 		@IContextKeyService contextKeyService: IContextKeyService,
@@ -130,9 +132,8 @@ export class WizardModal extends Modal {
 
 		this.initializeNavigation(this._body);
 
-		const mpContainer = append(this._body, $('div.dialog-message-and-page-container'));
-		mpContainer.append(this._messageElement);
-		this._pageContainer = append(mpContainer, $('div.dialogModal-page-container'));
+		this._mpContainer = append(this._body, $('div.dialog-message-and-page-container'));
+		this._pageContainer = append(this._mpContainer, $('div.dialogModal-page-container'));
 
 		this._wizard.pages.forEach(page => {
 			this.registerPage(page);
@@ -150,6 +151,15 @@ export class WizardModal extends Modal {
 			dialogPane.dispose();
 		});
 		this.updatePageNumbers();
+	}
+
+	protected set messagesElementVisible(visible: boolean) {
+		if (visible) {
+			this._mpContainer.prepend(this._messageElement);
+		} else {
+			// Let base class handle it
+			super.messagesElementVisible = false;
+		}
 	}
 
 	private updatePageNumbers(): void {
@@ -175,13 +185,20 @@ export class WizardModal extends Modal {
 		if (validate && !await this.validateNavigation(index)) {
 			return;
 		}
+
+		let dialogPaneToShow: DialogPane | undefined = undefined;
 		this._dialogPanes.forEach((dialogPane, page) => {
 			if (page === pageToShow) {
+				dialogPaneToShow = dialogPane;
 				dialogPane.show(focus);
 			} else {
 				dialogPane.hide();
 			}
 		});
+
+		if (dialogPaneToShow) {
+			status(`${dialogPaneToShow.pageNumberDisplayText} ${dialogPaneToShow.title}`);
+		}
 		this.setButtonsForPage(index);
 		this._wizard.setCurrentPage(index);
 		let currentPageValid = this._wizard.pages[this._wizard.currentPage].valid;
@@ -223,7 +240,7 @@ export class WizardModal extends Modal {
 	 * Bootstrap angular for the wizard's left nav bar
 	 */
 	private initializeNavigation(bodyContainer: HTMLElement) {
-		bootstrapAngular(this._instantiationService,
+		this._instantiationService.invokeFunction(bootstrapAngular,
 			DialogModule,
 			bodyContainer,
 			'wizard-navigation',

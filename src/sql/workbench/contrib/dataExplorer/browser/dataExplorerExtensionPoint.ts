@@ -14,8 +14,9 @@ import { IInstantiationService } from 'vs/platform/instantiation/common/instanti
 import { ContextKeyExpr } from 'vs/platform/contextkey/common/contextkey';
 import { coalesce } from 'vs/base/common/arrays';
 
-import { CustomTreeViewPanel, CustomTreeView } from 'sql/workbench/browser/parts/views/customView';
+import { CustomTreeViewPane, CustomTreeView } from 'sql/workbench/browser/parts/views/customView';
 import { VIEWLET_ID } from 'sql/workbench/contrib/dataExplorer/browser/dataExplorerViewlet';
+import { SyncDescriptor } from 'vs/platform/instantiation/common/descriptors';
 
 interface IUserFriendlyViewDescriptor {
 	id: string;
@@ -105,11 +106,13 @@ export class DataExplorerContainerExtensionHandler implements IWorkbenchContribu
 						const viewDescriptor = <ITreeViewDescriptor>{
 							id: item.id,
 							name: item.name,
-							ctorDescriptor: { ctor: CustomTreeViewPanel },
+							ctorDescriptor: new SyncDescriptor(CustomTreeViewPane),
 							when: ContextKeyExpr.deserialize(item.when),
 							canToggleVisibility: true,
 							collapsed: this.showCollapsed(container),
-							treeView: this.instantiationService.createInstance(CustomTreeView, item.id, item.name, container)
+							treeView: this.instantiationService.createInstance(CustomTreeView, item.id, item.name, container),
+							extensionId: extension.description.identifier,
+							originalContainerId: entry.key
 						};
 
 						viewIds.push(viewDescriptor.id);
@@ -129,15 +132,15 @@ export class DataExplorerContainerExtensionHandler implements IWorkbenchContribu
 
 		for (let descriptor of viewDescriptors) {
 			if (typeof descriptor.id !== 'string') {
-				collector.error(localize('requirestring', "property `{0}` is mandatory and must be of type `string`", "id"));
+				collector.error(localize('requirestring', "property `{0}` is mandatory and must be of type `string`", 'id'));
 				return false;
 			}
 			if (typeof descriptor.name !== 'string') {
-				collector.error(localize('requirestring', "property `{0}` is mandatory and must be of type `string`", "name"));
+				collector.error(localize('requirestring', "property `{0}` is mandatory and must be of type `string`", 'name'));
 				return false;
 			}
 			if (descriptor.when && typeof descriptor.when !== 'string') {
-				collector.error(localize('optstring', "property `{0}` can be omitted or must be of type `string`", "when"));
+				collector.error(localize('optstring', "property `{0}` can be omitted or must be of type `string`", 'when'));
 				return false;
 			}
 		}

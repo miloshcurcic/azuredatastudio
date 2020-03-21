@@ -7,18 +7,20 @@ import * as azdata from 'azdata';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs-extra';
+import * as constants from '../common/constants';
+import * as fsw from 'fs';
 import { IPrompter, QuestionTypes, IQuestion } from '../prompts/question';
 import CodeAdapter from '../prompts/adapter';
 import { BookTreeItem } from './bookTreeItem';
-import * as nls from 'vscode-nls';
-import { isEditorTitleFree } from '../common/utils';
 import { BookModel } from './bookModel';
 import { Deferred } from '../common/promise';
+import { IBookTrustManager, BookTrustManager } from './bookTrustManager';
+import * as loc from '../common/localizedConstants';
+import { ApiWrapper } from '../common/apiWrapper';
 
-const localize = nls.loadMessageBundle();
+const Content = 'content';
 
 export class BookTreeViewProvider implements vscode.TreeDataProvider<BookTreeItem> {
-
 	private _onDidChangeTreeData: vscode.EventEmitter<BookTreeItem | undefined> = new vscode.EventEmitter<BookTreeItem | undefined>();
 	readonly onDidChangeTreeData: vscode.Event<BookTreeItem | undefined> = this._onDidChangeTreeData.event;
 	private _throttleTimer: any;
@@ -26,44 +28,73 @@ export class BookTreeViewProvider implements vscode.TreeDataProvider<BookTreeIte
 	private _extensionContext: vscode.ExtensionContext;
 	private prompter: IPrompter;
 	private _initializeDeferred: Deferred<void> = new Deferred<void>();
-
-	// For testing
-	private _errorMessage: string;
-	private _onReadAllTOCFiles: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
 	private _openAsUntitled: boolean;
+	private _bookTrustManager: IBookTrustManager;
+
+	private _bookViewer: vscode.TreeView<BookTreeItem>;
 	public viewId: string;
 	public books: BookModel[];
 	public currentBook: BookModel;
 
-	constructor(workspaceFolders: vscode.WorkspaceFolder[], extensionContext: vscode.ExtensionContext, openAsUntitled: boolean, view: string) {
+	constructor(private _apiWrapper: ApiWrapper, workspaceFolders: vscode.WorkspaceFolder[], extensionContext: vscode.ExtensionContext, openAsUntitled: boolean, view: string) {
 		this._openAsUntitled = openAsUntitled;
 		this._extensionContext = extensionContext;
 		this.books = [];
-		this.initialize(workspaceFolders.map(a => a.uri.fsPath));
+		this.initialize(workspaceFolders).catch(e => console.error(e));
 		this.viewId = view;
 		this.prompter = new CodeAdapter();
-
+		this._bookTrustManager = new BookTrustManager(this.books, _apiWrapper);
 	}
 
-	private async initialize(bookPaths: string[]): Promise<void> {
+	private async initialize(workspaceFolders: vscode.WorkspaceFolder[]): Promise<void> {
 		await vscode.commands.executeCommand('setContext', 'unsavedBooks', this._openAsUntitled);
-		await Promise.all(bookPaths.map(async (bookPath) => {
-			let book: BookModel = new BookModel(bookPath, this._openAsUntitled, this._extensionContext);
-			await book.initializeContents();
-			this.books.push(book);
-			if (!this.currentBook) {
-				this.currentBook = book;
+		await Promise.all(workspaceFolders.map(async (workspaceFolder) => {
+			try {
+				await this.createAndAddBookModel(workspaceFolder.uri.fsPath);
+			} catch {
+				// no-op, not all workspace folders are going to be valid books
 			}
 		}));
 		this._initializeDeferred.resolve();
 	}
 
-	public get onReadAllTOCFiles(): vscode.Event<void> {
-		return this._onReadAllTOCFiles.event;
-	}
-
 	public get initialized(): Promise<void> {
 		return this._initializeDeferred.promise;
+	}
+
+	get _visitedNotebooks(): string[] {
+		return this._extensionContext.globalState.get(constants.visitedNotebooksMementoKey, []);
+	}
+
+	set _visitedNotebooks(value: string[]) {
+		this._extensionContext.globalState.update(constants.visitedNotebooksMementoKey, value);
+	}
+
+	trustBook(bookTreeItem?: BookTreeItem): void {
+		let bookPathToTrust = bookTreeItem ? bookTreeItem.root : this.currentBook?.bookPath;
+
+		if (bookPathToTrust) {
+
+			let trustChanged = this._bookTrustManager.setBookAsTrusted(bookPathToTrust);
+
+			if (trustChanged) {
+
+				let notebookDocuments = this._apiWrapper.getNotebookDocuments();
+
+				if (notebookDocuments) {
+					// update trust state of opened items
+					notebookDocuments.forEach(document => {
+						let notebook = this.currentBook.getNotebook(document.uri.fsPath);
+						if (notebook && this._bookTrustManager.isNotebookTrustedByDefault(document.uri.fsPath)) {
+							document.setTrusted(true);
+						}
+					});
+				}
+				this._apiWrapper.showInfoMessage(loc.msgBookTrusted);
+			} else {
+				this._apiWrapper.showInfoMessage(loc.msgBookAlreadyTrusted);
+			}
+		}
 	}
 
 	async openBook(bookPath: string, urlToOpen?: string): Promise<void> {
@@ -72,20 +103,73 @@ export class BookTreeViewProvider implements vscode.TreeDataProvider<BookTreeIte
 			// Check if the book is already open in viewlet.
 			if (books.length > 0 && books[0].bookItems) {
 				this.currentBook = books[0];
-				this.showPreviewFile(urlToOpen);
+				await this.showPreviewFile(urlToOpen);
 			}
 			else {
-				await this.initialize([bookPath]);
+				await this.createAndAddBookModel(bookPath);
 				let bookViewer = vscode.window.createTreeView(this.viewId, { showCollapseAll: true, treeDataProvider: this });
 				this.currentBook = this.books.filter(book => book.bookPath === bookPath)[0];
 				bookViewer.reveal(this.currentBook.bookItems[0], { expand: vscode.TreeItemCollapsibleState.Expanded, focus: true, select: true });
-				this.showPreviewFile(urlToOpen);
+				await this.showPreviewFile(urlToOpen);
+			}
+			// add file watcher on toc file.
+			fsw.watch(path.join(bookPath, '_data', 'toc.yml'), async (event, filename) => {
+				if (event === 'change') {
+					let index = this.books.findIndex(book => book.bookPath === bookPath);
+					await this.books[index].initializeContents().then(() => {
+						this._onDidChangeTreeData.fire(this.books[index].bookItems[0]);
+					});
+					this._onDidChangeTreeData.fire();
+				}
+			});
+		} catch (e) {
+			vscode.window.showErrorMessage(loc.openFileError(bookPath, e instanceof Error ? e.message : e));
+		}
+	}
+
+	async closeBook(book: BookTreeItem): Promise<void> {
+		// remove book from the saved books
+		let deletedBook: BookModel;
+		try {
+			let index: number = this.books.indexOf(this.books.find(b => b.bookPath.replace(/\\/g, '/') === book.root));
+			if (index > -1) {
+				deletedBook = this.books.splice(index, 1)[0];
+				if (this.currentBook === deletedBook) {
+					this.currentBook = this.books.length > 0 ? this.books[this.books.length - 1] : undefined;
+				}
+				this._onDidChangeTreeData.fire();
 			}
 		} catch (e) {
-			vscode.window.showErrorMessage(localize('openBookError', "Open book {0} failed: {1}",
-				bookPath,
-				e instanceof Error ? e.message : e));
+			vscode.window.showErrorMessage(loc.closeBookError(book.root, e instanceof Error ? e.message : e));
+		} finally {
+			// remove watch on toc file.
+			if (deletedBook) {
+				fsw.unwatchFile(path.join(deletedBook.bookPath, '_data', 'toc.yml'));
+			}
 		}
+	}
+
+	/**
+	 * Creates a model for the specified folder path and adds it to the known list of books if we
+	 * were able to successfully parse it.
+	 * @param bookPath The path to the book folder to create the model for
+	 */
+	private async createAndAddBookModel(bookPath: string): Promise<void> {
+		const book: BookModel = new BookModel(bookPath, this._openAsUntitled, this._extensionContext);
+		await book.initializeContents();
+		this.books.push(book);
+		if (!this.currentBook) {
+			this.currentBook = book;
+		}
+		this._bookViewer = this._apiWrapper.createTreeView(this.viewId, { showCollapseAll: true, treeDataProvider: this });
+		this._bookViewer.onDidChangeVisibility(e => {
+			if (e.visible) {
+				this.revealActiveDocumentInViewlet();
+			}
+		});
+		azdata.nb.onDidChangeActiveNotebookEditor(e => {
+			this.revealActiveDocumentInViewlet(e.document.uri, false);
+		});
 	}
 
 	async showPreviewFile(urlToOpen?: string): Promise<void> {
@@ -93,13 +177,14 @@ export class BookTreeViewProvider implements vscode.TreeDataProvider<BookTreeIte
 			const bookRoot = this.currentBook.bookItems[0];
 			const sectionToOpen = bookRoot.findChildSection(urlToOpen);
 			const urlPath = sectionToOpen ? sectionToOpen.url : bookRoot.tableOfContents.sections[0].url;
-			const sectionToOpenMarkdown: string = path.join(this.currentBook.bookPath, 'content', urlPath.concat('.md'));
-			const sectionToOpenNotebook: string = path.join(this.currentBook.bookPath, 'content', urlPath.concat('.ipynb'));
+			const sectionToOpenMarkdown: string = path.join(this.currentBook.bookPath, Content, urlPath.concat('.md'));
+			// The Notebook editor expects a posix path for the resource (it will still resolve to the correct fsPath based on OS)
+			const sectionToOpenNotebook: string = path.posix.join(this.currentBook.bookPath, Content, urlPath.concat('.ipynb'));
 			if (await fs.pathExists(sectionToOpenMarkdown)) {
 				this.openMarkdown(sectionToOpenMarkdown);
 			}
 			else if (await fs.pathExists(sectionToOpenNotebook)) {
-				this.openNotebook(sectionToOpenNotebook);
+				await this.openNotebook(sectionToOpenNotebook);
 			}
 		}
 	}
@@ -108,15 +193,45 @@ export class BookTreeViewProvider implements vscode.TreeDataProvider<BookTreeIte
 		try {
 			if (this._openAsUntitled) {
 				this.openNotebookAsUntitled(resource);
-			}
-			else {
+			} else {
+				// let us keep a list of already visited notebooks so that we do not trust them again, potentially
+				// overriding user changes
+				let normalizedResource = path.normalize(resource);
+
+				if (this._visitedNotebooks.indexOf(normalizedResource) === -1
+					&& this._bookTrustManager.isNotebookTrustedByDefault(normalizedResource)) {
+					let openDocumentListenerUnsubscriber = azdata.nb.onDidOpenNotebookDocument((document: azdata.nb.NotebookDocument) => {
+						document.setTrusted(true);
+						this._visitedNotebooks = this._visitedNotebooks.concat([normalizedResource]);
+						openDocumentListenerUnsubscriber.dispose();
+					});
+				}
+
 				let doc = await vscode.workspace.openTextDocument(resource);
 				vscode.window.showTextDocument(doc);
 			}
 		} catch (e) {
-			vscode.window.showErrorMessage(localize('openNotebookError', "Open notebook {0} failed: {1}",
-				resource,
-				e instanceof Error ? e.message : e));
+			vscode.window.showErrorMessage(loc.openNotebookError(resource, e instanceof Error ? e.message : e));
+		}
+	}
+
+	async revealActiveDocumentInViewlet(uri?: vscode.Uri, shouldReveal: boolean = true): Promise<void> {
+		let bookItem: BookTreeItem;
+		// If no uri is passed in, try to use the current active notebook editor
+		if (!uri) {
+			let openDocument = azdata.nb.activeNotebookEditor;
+			if (openDocument) {
+				bookItem = this.currentBook.getNotebook(openDocument.document.uri.fsPath);
+			}
+		} else if (uri.fsPath) {
+			bookItem = this.currentBook.getNotebook(uri.fsPath);
+		}
+		if (bookItem) {
+			// Select + focus item in viewlet if books viewlet is already open, or if we pass in variable
+			if (shouldReveal || this._bookViewer.visible) {
+				// Note: 3 is the maximum number of levels that the vscode APIs let you expand to
+				await this._bookViewer.reveal(bookItem, { select: true, focus: true, expand: 3 });
+			}
 		}
 	}
 
@@ -125,9 +240,7 @@ export class BookTreeViewProvider implements vscode.TreeDataProvider<BookTreeIte
 			try {
 				vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(resource));
 			} catch (e) {
-				vscode.window.showErrorMessage(localize('openMarkdownError', "Open markdown {0} failed: {1}",
-					resource,
-					e instanceof Error ? e.message : e));
+				vscode.window.showErrorMessage(loc.openMarkdownError(resource, e instanceof Error ? e.message : e));
 			}
 		});
 	}
@@ -144,15 +257,13 @@ export class BookTreeViewProvider implements vscode.TreeDataProvider<BookTreeIte
 				});
 			});
 		} catch (e) {
-			vscode.window.showErrorMessage(localize('openUntitledNotebookError', "Open untitled notebook {0} as untitled failed: {1}",
-				resource,
-				e instanceof Error ? e.message : e));
+			vscode.window.showErrorMessage(loc.openUntitledNotebookError(resource, e instanceof Error ? e.message : e));
 		}
 	}
 
 	async saveJupyterBooks(): Promise<void> {
 		if (this.currentBook.bookPath) {
-			const allFilesFilter = localize('allFiles', "All Files");
+			const allFilesFilter = loc.allFiles;
 			let filter: any = {};
 			filter[allFilesFilter] = '*';
 			let uris = await vscode.window.showOpenDialog({
@@ -160,7 +271,7 @@ export class BookTreeViewProvider implements vscode.TreeDataProvider<BookTreeIte
 				canSelectFiles: false,
 				canSelectMany: false,
 				canSelectFolders: true,
-				openLabel: localize('labelPickFolder', "Pick Folder")
+				openLabel: loc.labelPickFolder
 			});
 			if (uris && uris.length > 0) {
 				let pickedFolder = uris[0];
@@ -193,10 +304,31 @@ export class BookTreeViewProvider implements vscode.TreeDataProvider<BookTreeIte
 		}
 	}
 
-	public async searchJupyterBooks(): Promise<void> {
+	public async searchJupyterBooks(treeItem?: BookTreeItem): Promise<void> {
 		if (this.currentBook && this.currentBook.bookPath) {
-			let filesToIncludeFiltered = path.join(this.currentBook.bookPath, '**', '*.md') + ',' + path.join(this.currentBook.bookPath, '**', '*.ipynb');
+			let folderToSearch = this.currentBook.bookPath;
+			if (treeItem && treeItem.uri) {
+				folderToSearch = path.join(folderToSearch, Content, path.dirname(treeItem.uri));
+			}
+			let filesToIncludeFiltered = path.join(folderToSearch, '**', '*.md') + ',' + path.join(folderToSearch, '**', '*.ipynb');
 			vscode.commands.executeCommand('workbench.action.findInFiles', { filesToInclude: filesToIncludeFiltered, query: '' });
+		}
+	}
+
+	public async openNewBook(): Promise<void> {
+		const allFilesFilter = loc.allFiles;
+		let filter: any = {};
+		filter[allFilesFilter] = '*';
+		let uris = await vscode.window.showOpenDialog({
+			filters: filter,
+			canSelectFiles: false,
+			canSelectMany: false,
+			canSelectFolders: true,
+			openLabel: loc.labelBookFolder
+		});
+		if (uris && uris.length > 0) {
+			let bookPath = uris[0];
+			await this.openBook(bookPath.fsPath);
 		}
 	}
 
@@ -230,9 +362,7 @@ export class BookTreeViewProvider implements vscode.TreeDataProvider<BookTreeIte
 		try {
 			vscode.env.openExternal(vscode.Uri.parse(resource));
 		} catch (e) {
-			vscode.window.showErrorMessage(localize('openExternalLinkError', "Open link {0} failed: {1}",
-				resource,
-				e instanceof Error ? e.message : e));
+			vscode.window.showErrorMessage(loc.openExternalLinkError(resource, e instanceof Error ? e.message : e));
 		}
 	}
 
@@ -261,7 +391,7 @@ export class BookTreeViewProvider implements vscode.TreeDataProvider<BookTreeIte
 		if (element) {
 			let parentPath;
 			if (element.root.endsWith('.md')) {
-				parentPath = path.join(this.currentBook.bookPath, 'content', 'readme.md');
+				parentPath = path.join(this.currentBook.bookPath, Content, 'readme.md');
 				if (parentPath === element.root) {
 					return undefined;
 				}
@@ -273,53 +403,28 @@ export class BookTreeViewProvider implements vscode.TreeDataProvider<BookTreeIte
 			else {
 				return undefined;
 			}
-			return this.currentBook.getAllBooks().get(parentPath);
+			return this.currentBook.getAllNotebooks().get(parentPath);
 		} else {
 			return undefined;
 		}
 	}
 
-	public get errorMessage() {
-		return this._errorMessage;
-	}
-
 	getUntitledNotebookUri(resource: string): vscode.Uri {
-		let untitledFileName: vscode.Uri;
-		if (process.platform === 'win32') {
-			let title = path.join(path.dirname(resource), this.findNextUntitledFileName(resource));
-			untitledFileName = vscode.Uri.parse(`untitled:${title}`);
-		}
-		else {
-			untitledFileName = vscode.Uri.parse(resource).with({ scheme: 'untitled' });
-		}
-		if (!this.currentBook.getAllBooks().get(untitledFileName.fsPath) && !this.currentBook.getAllBooks().get(path.basename(untitledFileName.fsPath))) {
-			let notebook = this.currentBook.getAllBooks().get(resource);
-			this.currentBook.getAllBooks().set(path.basename(untitledFileName.fsPath), notebook);
+		let untitledFileName = vscode.Uri.parse(`untitled:${resource}`);
+		if (!this.currentBook.getAllNotebooks().get(untitledFileName.fsPath) && !this.currentBook.getAllNotebooks().get(path.basename(untitledFileName.fsPath))) {
+			let notebook = this.currentBook.getAllNotebooks().get(resource);
+			this.currentBook.getAllNotebooks().set(path.basename(untitledFileName.fsPath), notebook);
 		}
 		return untitledFileName;
 	}
 
-	findNextUntitledFileName(filePath: string): string {
-		const baseName = path.basename(filePath);
-		let idx = 0;
-		let title;
-		do {
-			const suffix = idx === 0 ? '' : `-${idx}`;
-			title = `${baseName}${suffix}`;
-			idx++;
-		} while (!isEditorTitleFree(title));
-
-		return title;
-	}
 
 	//Confirmation message dialog
 	private async confirmReplace(): Promise<boolean> {
 		return await this.prompter.promptSingle<boolean>(<IQuestion>{
 			type: QuestionTypes.confirm,
-			message: localize('confirmReplace', "Folder already exists. Are you sure you want to delete and replace this folder?"),
+			message: loc.confirmReplace,
 			default: false
 		});
 	}
-
-
 }

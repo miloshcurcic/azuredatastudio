@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import 'vs/css!./media/tabstitlecontrol';
-import { isMacintosh } from 'vs/base/common/platform';
+import { isMacintosh, isWindows } from 'vs/base/common/platform';
 import { shorten } from 'vs/base/common/labels';
 import { toResource, GroupIdentifier, IEditorInput, Verbosity, EditorCommandsContextActionRunner, IEditorPartOptions, SideBySideEditor } from 'vs/workbench/common/editor';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
@@ -24,27 +24,30 @@ import { IDisposable, dispose, DisposableStore, combinedDisposable, MutableDispo
 import { ScrollableElement } from 'vs/base/browser/ui/scrollbar/scrollableElement';
 import { ScrollbarVisibility } from 'vs/base/common/scrollable';
 import { getOrSet } from 'vs/base/common/map';
-import { IThemeService, registerThemingParticipant, ITheme, ICssStyleCollector, HIGH_CONTRAST } from 'vs/platform/theme/common/themeService';
+import { IThemeService, registerThemingParticipant, IColorTheme, ICssStyleCollector, HIGH_CONTRAST } from 'vs/platform/theme/common/themeService';
 import { TAB_INACTIVE_BACKGROUND, TAB_ACTIVE_BACKGROUND, TAB_ACTIVE_FOREGROUND, TAB_INACTIVE_FOREGROUND, TAB_BORDER, EDITOR_DRAG_AND_DROP_BACKGROUND, TAB_UNFOCUSED_ACTIVE_FOREGROUND, TAB_UNFOCUSED_INACTIVE_FOREGROUND, TAB_UNFOCUSED_ACTIVE_BACKGROUND, TAB_UNFOCUSED_ACTIVE_BORDER, TAB_ACTIVE_BORDER, TAB_HOVER_BACKGROUND, TAB_HOVER_BORDER, TAB_UNFOCUSED_HOVER_BACKGROUND, TAB_UNFOCUSED_HOVER_BORDER, EDITOR_GROUP_HEADER_TABS_BACKGROUND, WORKBENCH_BACKGROUND, TAB_ACTIVE_BORDER_TOP, TAB_UNFOCUSED_ACTIVE_BORDER_TOP, TAB_ACTIVE_MODIFIED_BORDER, TAB_INACTIVE_MODIFIED_BORDER, TAB_UNFOCUSED_ACTIVE_MODIFIED_BORDER, TAB_UNFOCUSED_INACTIVE_MODIFIED_BORDER } from 'vs/workbench/common/theme';
 import { activeContrastBorder, contrastBorder, editorBackground, breadcrumbsBackground } from 'vs/platform/theme/common/colorRegistry';
 import { ResourcesDropHandler, fillResourceDataTransfers, DraggedEditorIdentifier, DraggedEditorGroupIdentifier, DragAndDropObserver } from 'vs/workbench/browser/dnd';
 import { Color } from 'vs/base/common/color';
 import { INotificationService } from 'vs/platform/notification/common/notification';
 import { IExtensionService } from 'vs/workbench/services/extensions/common/extensions';
-import { MergeGroupMode, IMergeGroupOptions } from 'vs/workbench/services/editor/common/editorGroupsService';
-import { IUntitledEditorService } from 'vs/workbench/services/untitled/common/untitledEditorService';
+import { MergeGroupMode, IMergeGroupOptions, GroupsArrangement } from 'vs/workbench/services/editor/common/editorGroupsService';
 import { addClass, addDisposableListener, hasClass, EventType, EventHelper, removeClass, Dimension, scheduleAtNextAnimationFrame, findParentWithClass, clearNode } from 'vs/base/browser/dom';
 import { localize } from 'vs/nls';
-import { IEditorGroupsAccessor, IEditorGroupView } from 'vs/workbench/browser/parts/editor/editor';
+import { IEditorGroupsAccessor, IEditorGroupView, EditorServiceImpl } from 'vs/workbench/browser/parts/editor/editor';
 import { CloseOneEditorAction } from 'vs/workbench/browser/parts/editor/editorActions';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
 import { BreadcrumbsControl } from 'vs/workbench/browser/parts/editor/breadcrumbsControl';
 import { IFileService } from 'vs/platform/files/common/files';
 import { withNullAsUndefined, assertAllDefined, assertIsDefined } from 'vs/base/common/types';
-import { ILabelService } from 'vs/platform/label/common/label';
+import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
+import { basenameOrAuthority } from 'vs/base/common/resources';
+import { RunOnceScheduler } from 'vs/base/common/async';
+import { IRemotePathService } from 'vs/workbench/services/path/common/remotePathService';
+import { IPath, win32, posix } from 'vs/base/common/path';
 
 // {{SQL CARBON EDIT}} -- Display the editor's tab color
-import * as QueryConstants from 'sql/workbench/contrib/query/common/constants';
+import * as QueryConstants from 'sql/platform/query/common/constants';
 import * as WorkbenchUtils from 'sql/workbench/common/sqlWorkbenchUtils';
 // {{SQL CARBON EDIT}} -- End
 
@@ -73,13 +76,14 @@ export class TabsTitleControl extends TitleControl {
 	private readonly layoutScheduled = this._register(new MutableDisposable());
 	private blockRevealActiveTab: boolean | undefined;
 
+	private path: IPath = isWindows ? win32 : posix;
+
 	constructor(
 		parent: HTMLElement,
 		accessor: IEditorGroupsAccessor,
 		group: IEditorGroupView,
 		@IContextMenuService contextMenuService: IContextMenuService,
 		@IInstantiationService instantiationService: IInstantiationService,
-		@IUntitledEditorService private readonly untitledEditorService: IUntitledEditorService,
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IKeybindingService keybindingService: IKeybindingService,
 		@ITelemetryService telemetryService: ITelemetryService,
@@ -90,12 +94,18 @@ export class TabsTitleControl extends TitleControl {
 		@IExtensionService extensionService: IExtensionService,
 		@IConfigurationService configurationService: IConfigurationService,
 		@IFileService fileService: IFileService,
-		@ILabelService labelService: ILabelService
+		@IEditorService private readonly editorService: EditorServiceImpl,
+		@IRemotePathService private readonly remotePathService: IRemotePathService
 	) {
-		super(parent, accessor, group, contextMenuService, instantiationService, contextKeyService, keybindingService, telemetryService, notificationService, menuService, quickOpenService, themeService, extensionService, configurationService, fileService, labelService);
+		super(parent, accessor, group, contextMenuService, instantiationService, contextKeyService, keybindingService, telemetryService, notificationService, menuService, quickOpenService, themeService, extensionService, configurationService, fileService);
 
 		this.tabResourceLabels = this._register(this.instantiationService.createInstance(ResourceLabels, DEFAULT_LABELS_CONTAINER));
 		this.closeOneEditorAction = this._register(this.instantiationService.createInstance(CloseOneEditorAction, CloseOneEditorAction.ID, CloseOneEditorAction.LABEL));
+
+		// Resolve the correct path library for the OS we are on
+		// If we are connected to remote, this accounts for the
+		// remote OS.
+		(async () => this.path = await this.remotePathService.path)();
 	}
 
 	protected create(parent: HTMLElement): void {
@@ -111,6 +121,7 @@ export class TabsTitleControl extends TitleControl {
 		this.tabsContainer.setAttribute('role', 'tablist');
 		this.tabsContainer.draggable = true;
 		addClass(this.tabsContainer, 'tabs-container');
+		this._register(Gesture.addTarget(this.tabsContainer));
 
 		// Tabs Scrollbar
 		this.tabsScrollbar = this._register(this.createTabsScrollbar(this.tabsContainer));
@@ -178,13 +189,33 @@ export class TabsTitleControl extends TitleControl {
 		}));
 
 		// New file when double clicking on tabs container (but not tabs)
-		this._register(addDisposableListener(tabsContainer, EventType.DBLCLICK, e => {
-			if (e.target === tabsContainer) {
+		[TouchEventType.Tap, EventType.DBLCLICK].forEach(eventType => {
+			this._register(addDisposableListener(tabsContainer, eventType, (e: MouseEvent | GestureEvent) => {
+				if (eventType === EventType.DBLCLICK) {
+					if (e.target !== tabsContainer) {
+						return; // ignore if target is not tabs container
+					}
+				} else {
+					if ((<GestureEvent>e).tapCount !== 2) {
+						return; // ignore single taps
+					}
+
+					if ((<GestureEvent>e).initialTarget !== tabsContainer) {
+						return; // ignore if target is not tabs container
+					}
+				}
+
 				EventHelper.stop(e);
 
-				this.group.openEditor(this.untitledEditorService.createOrGet(), { pinned: true /* untitled is always pinned */, index: this.group.count /* always at the end */ });
-			}
-		}));
+				this.group.openEditor(this.editorService.createEditorInput({
+					forceUntitled: true,
+					options: {
+						pinned: true,			// untitled is always pinned
+						index: this.group.count // always at the end
+					}
+				}));
+			}));
+		});
 
 		// Prevent auto-scrolling (https://github.com/Microsoft/vscode/issues/16690)
 		this._register(addDisposableListener(tabsContainer, EventType.MOUSE_DOWN, (e: MouseEvent) => {
@@ -316,7 +347,7 @@ export class TabsTitleControl extends TitleControl {
 				(tabsContainer.lastChild as HTMLElement).remove();
 
 				// Remove associated tab label and widget
-				this.tabDisposables.pop()!.dispose();
+				dispose(this.tabDisposables.pop());
 			}
 
 			// A removal of a label requires to recompute all labels
@@ -360,7 +391,7 @@ export class TabsTitleControl extends TitleControl {
 	}
 
 	pinEditor(editor: IEditorInput): void {
-		this.withTab(editor, (tabContainer, tabLabelWidget, tabLabel) => this.redrawLabel(editor, tabContainer, tabLabelWidget, tabLabel));
+		this.withTab(editor, (editor, index, tabContainer, tabLabelWidget, tabLabel) => this.redrawLabel(editor, tabContainer, tabLabelWidget, tabLabel));
 	}
 
 	setActive(isGroupActive: boolean): void {
@@ -375,10 +406,16 @@ export class TabsTitleControl extends TitleControl {
 		this.layout(this.dimension);
 	}
 
+	private updateEditorLabelAggregator = this._register(new RunOnceScheduler(() => this.updateEditorLabels(), 0));
+
 	updateEditorLabel(editor: IEditorInput): void {
 
 		// Update all labels to account for changes to tab labels
-		this.updateEditorLabels();
+		// Since this method may be called a lot of times from
+		// individual editors, we collect all those requests and
+		// then run the update once because we have to update
+		// all opened tabs in the group at once.
+		this.updateEditorLabelAggregator.schedule();
 	}
 
 	updateEditorLabels(): void {
@@ -396,7 +433,7 @@ export class TabsTitleControl extends TitleControl {
 	}
 
 	updateEditorDirty(editor: IEditorInput): void {
-		this.withTab(editor, (tabContainer, tabLabelWidget) => this.redrawEditorActiveAndDirty(this.accessor.activeGroup === this.group, editor, tabContainer, tabLabelWidget));
+		this.withTab(editor, (editor, index, tabContainer, tabLabelWidget) => this.redrawEditorActiveAndDirty(this.accessor.activeGroup === this.group, editor, tabContainer, tabLabelWidget));
 	}
 
 	updateOptions(oldOptions: IEditorPartOptions, newOptions: IEditorPartOptions): void {
@@ -423,13 +460,23 @@ export class TabsTitleControl extends TitleControl {
 		this.redraw();
 	}
 
-	private withTab(editor: IEditorInput, fn: (tabContainer: HTMLElement, tabLabelWidget: IResourceLabel, tabLabel: IEditorInputLabel) => void): void {
-		const editorIndex = this.group.getIndexOfEditor(editor);
+	private forEachTab(fn: (editor: IEditorInput, index: number, tabContainer: HTMLElement, tabLabelWidget: IResourceLabel, tabLabel: IEditorInputLabel) => void): void {
+		this.group.editors.forEach((editor, index) => {
+			this.doWithTab(index, editor, fn);
+		});
+	}
 
+	private withTab(editor: IEditorInput, fn: (editor: IEditorInput, index: number, tabContainer: HTMLElement, tabLabelWidget: IResourceLabel, tabLabel: IEditorInputLabel) => void): void {
+		this.doWithTab(this.group.getIndexOfEditor(editor), editor, fn);
+	}
+
+	private doWithTab(index: number, editor: IEditorInput, fn: (editor: IEditorInput, index: number, tabContainer: HTMLElement, tabLabelWidget: IResourceLabel, tabLabel: IEditorInputLabel) => void): void {
 		const tabsContainer = assertIsDefined(this.tabsContainer);
-		const tabContainer = tabsContainer.children[editorIndex] as HTMLElement;
-		if (tabContainer) {
-			fn(tabContainer, this.tabResourceLabels.get(editorIndex), this.tabLabels[editorIndex]);
+		const tabContainer = tabsContainer.children[index] as HTMLElement;
+		const tabResourceLabel = this.tabResourceLabels.get(index);
+		const tabLabel = this.tabLabels[index];
+		if (tabContainer && tabResourceLabel && tabLabel) {
+			fn(editor, index, tabContainer, tabResourceLabel, tabLabel);
 		}
 	}
 
@@ -496,7 +543,7 @@ export class TabsTitleControl extends TitleControl {
 			}
 
 			// Open tabs editor
-			const input = this.group.getEditor(index);
+			const input = this.group.getEditorByIndex(index);
 			if (input) {
 				this.group.openEditor(input);
 			}
@@ -507,7 +554,7 @@ export class TabsTitleControl extends TitleControl {
 		const showContextMenu = (e: Event) => {
 			EventHelper.stop(e);
 
-			const input = this.group.getEditor(index);
+			const input = this.group.getEditorByIndex(index);
 			if (input) {
 				this.onContextMenu(input, e, tab);
 			}
@@ -557,7 +604,7 @@ export class TabsTitleControl extends TitleControl {
 			// Run action on Enter/Space
 			if (event.equals(KeyCode.Enter) || event.equals(KeyCode.Space)) {
 				handled = true;
-				const input = this.group.getEditor(index);
+				const input = this.group.getEditorByIndex(index);
 				if (input) {
 					this.group.openEditor(input);
 				}
@@ -576,7 +623,7 @@ export class TabsTitleControl extends TitleControl {
 					targetIndex = this.group.count - 1;
 				}
 
-				const target = this.group.getEditor(targetIndex);
+				const target = this.group.getEditorByIndex(targetIndex);
 				if (target) {
 					handled = true;
 					this.group.openEditor(target, { preserveFocus: true });
@@ -594,18 +641,29 @@ export class TabsTitleControl extends TitleControl {
 			});
 		}));
 
-		// Pin on double click
-		disposables.add(addDisposableListener(tab, EventType.DBLCLICK, (e: MouseEvent) => {
-			EventHelper.stop(e);
+		// Double click: either pin or toggle maximized
+		[TouchEventType.Tap, EventType.DBLCLICK].forEach(eventType => {
+			disposables.add(addDisposableListener(tab, eventType, (e: MouseEvent | GestureEvent) => {
+				if (eventType === EventType.DBLCLICK) {
+					EventHelper.stop(e);
+				} else if ((<GestureEvent>e).tapCount !== 2) {
+					return; // ignore single taps
+				}
 
-			this.group.pinEditor(this.group.getEditor(index) || undefined);
-		}));
+				const editor = this.group.getEditorByIndex(index);
+				if (editor && this.group.isPinned(editor)) {
+					this.accessor.arrangeGroups(GroupsArrangement.TOGGLE, this.group);
+				} else {
+					this.group.pinEditor(editor);
+				}
+			}));
+		});
 
 		// Context menu
 		disposables.add(addDisposableListener(tab, EventType.CONTEXT_MENU, (e: Event) => {
 			EventHelper.stop(e, true);
 
-			const input = this.group.getEditor(index);
+			const input = this.group.getEditorByIndex(index);
 			if (input) {
 				this.onContextMenu(input, e, tab);
 			}
@@ -613,7 +671,7 @@ export class TabsTitleControl extends TitleControl {
 
 		// Drag support
 		disposables.add(addDisposableListener(tab, EventType.DRAG_START, (e: DragEvent) => {
-			const editor = this.group.getEditor(index);
+			const editor = this.group.getEditorByIndex(index);
 			if (!editor) {
 				return;
 			}
@@ -659,7 +717,7 @@ export class TabsTitleControl extends TitleControl {
 					const data = this.editorTransfer.getData(DraggedEditorIdentifier.prototype);
 					if (Array.isArray(data)) {
 						const localDraggedEditor = data[0].identifier;
-						if (localDraggedEditor.editor === this.group.getEditor(index) && localDraggedEditor.groupId === this.group.id) {
+						if (localDraggedEditor.editor === this.group.getEditorByIndex(index) && localDraggedEditor.groupId === this.group.id) {
 							if (e.dataTransfer) {
 								e.dataTransfer.dropEffect = 'none';
 							}
@@ -729,7 +787,7 @@ export class TabsTitleControl extends TitleControl {
 
 	private updateDropFeedback(element: HTMLElement, isDND: boolean, index?: number): void {
 		const isTab = (typeof index === 'number');
-		const editor = typeof index === 'number' ? this.group.getEditor(index) : undefined;
+		const editor = typeof index === 'number' ? this.group.getEditorByIndex(index) : undefined;
 		const isActiveTab = isTab && !!editor && this.group.isActive(editor);
 
 		// Background
@@ -752,13 +810,9 @@ export class TabsTitleControl extends TitleControl {
 
 		// {{SQL CARBON EDIT}} -- Display the editor's tab color
 		if (isTab) {
-			const tabContainer = this.tabsContainer.children[index];
-			if (tabContainer instanceof HTMLElement) {
-				let editor = this.group.getEditor(index);
-				if (editor) {
-					this.setEditorTabColor(editor, tabContainer, isActiveTab);
-				}
-			}
+			this.doWithTab(index!, editor!, (editor, index, tabContainer) => {
+				this.setEditorTabColor(editor, tabContainer, isActiveTab);
+			});
 		}
 	}
 
@@ -842,7 +896,7 @@ export class TabsTitleControl extends TitleControl {
 			}
 
 			// Shorten descriptions
-			const shortenedDescriptions = shorten(descriptions);
+			const shortenedDescriptions = shorten(descriptions, this.path.sep);
 			descriptions.forEach((description, i) => {
 				for (const label of mapDescriptionToDuplicates.get(description) || []) {
 					label.description = shortenedDescriptions[i];
@@ -876,16 +930,6 @@ export class TabsTitleControl extends TitleControl {
 
 		// Ensure the active tab is always revealed
 		this.layout(this.dimension);
-	}
-
-	private forEachTab(fn: (editor: IEditorInput, index: number, tabContainer: HTMLElement, tabLabelWidget: IResourceLabel, tabLabel: IEditorInputLabel) => void): void {
-		this.group.editors.forEach((editor, index) => {
-			const tabsContainer = assertIsDefined(this.tabsContainer);
-			const tabContainer = tabsContainer.children[index] as HTMLElement;
-			if (tabContainer) {
-				fn(editor, index, tabContainer, this.tabResourceLabels.get(index), this.tabLabels[index]);
-			}
-		});
 	}
 
 	private redrawTab(editor: IEditorInput, index: number, tabContainer: HTMLElement, tabLabelWidget: IResourceLabel, tabLabel: IEditorInputLabel): void {
@@ -931,11 +975,20 @@ export class TabsTitleControl extends TitleControl {
 		tabContainer.title = title;
 
 		// Label
-		tabLabelWidget.setResource({ name, description, resource: toResource(editor, { supportSideBySide: SideBySideEditor.MASTER }) || undefined }, { title, extraClasses: ['tab-label'], italic: !this.group.isPinned(editor) });
+		tabLabelWidget.setResource(
+			{ name, description, resource: toResource(editor, { supportSideBySide: SideBySideEditor.BOTH }) },
+			{ title, extraClasses: ['tab-label'], italic: !this.group.isPinned(editor) }
+		);
 
-		// {{SQL CARBON EDIT}} -- Display the editor's tab color
-		const isTabActive = this.group.isActive(editor);
-		this.setEditorTabColor(editor, tabContainer, isTabActive);
+		this.setEditorTabColor(editor, tabContainer, this.group.isActive(editor)); // {{SQL CARBON EDIT}} -- Display the editor's tab color
+
+		// Tests helper
+		const resource = toResource(editor, { supportSideBySide: SideBySideEditor.MASTER });
+		if (resource) {
+			tabContainer.setAttribute('data-resource-name', basenameOrAuthority(resource));
+		} else {
+			tabContainer.removeAttribute('data-resource-name');
+		}
 	}
 
 	private redrawEditorActiveAndDirty(isGroupActive: boolean, editor: IEditorInput, tabContainer: HTMLElement, tabLabelWidget: IResourceLabel): void {
@@ -975,7 +1028,7 @@ export class TabsTitleControl extends TitleControl {
 			}
 
 			// Label
-			tabLabelWidget.element.style.color = this.getColor(isGroupActive ? TAB_ACTIVE_FOREGROUND : TAB_UNFOCUSED_ACTIVE_FOREGROUND);
+			tabLabelWidget.element.style.color = this.getColor(isGroupActive ? TAB_ACTIVE_FOREGROUND : TAB_UNFOCUSED_ACTIVE_FOREGROUND) || '';
 		}
 
 		// Tab is inactive
@@ -988,7 +1041,7 @@ export class TabsTitleControl extends TitleControl {
 			tabContainer.style.boxShadow = '';
 
 			// Label
-			tabLabelWidget.element.style.color = this.getColor(isGroupActive ? TAB_INACTIVE_FOREGROUND : TAB_UNFOCUSED_INACTIVE_FOREGROUND);
+			tabLabelWidget.element.style.color = this.getColor(isGroupActive ? TAB_INACTIVE_FOREGROUND : TAB_UNFOCUSED_INACTIVE_FOREGROUND) || '';
 		}
 
 		// {{SQL CARBON EDIT}} - Override the editor's tab color if query tab coloring is set
@@ -998,8 +1051,8 @@ export class TabsTitleControl extends TitleControl {
 	private doRedrawEditorDirty(isGroupActive: boolean, isTabActive: boolean, editor: IEditorInput, tabContainer: HTMLElement): boolean {
 		let hasModifiedBorderColor = false;
 
-		// Tab: dirty
-		if (editor.isDirty()) {
+		// Tab: dirty (unless saving)
+		if (editor.isDirty() && !editor.isSaving()) {
 			addClass(tabContainer, 'dirty');
 
 			// Highlight modified tabs with a border if configured
@@ -1216,7 +1269,7 @@ export class TabsTitleControl extends TitleControl {
 		let sqlEditor = editor as any;
 		let tabColorMode = WorkbenchUtils.getSqlConfigValue<string>(this.configurationService, 'tabColorMode');
 		if (tabColorMode === QueryConstants.tabColorModeOff || (tabColorMode !== QueryConstants.tabColorModeBorder && tabColorMode !== QueryConstants.tabColorModeFill)
-			|| this.themeService.getTheme().type === HIGH_CONTRAST || !sqlEditor.tabColor) {
+			|| this.themeService.getColorTheme().type === HIGH_CONTRAST || !sqlEditor.tabColor) {
 			tabContainer.style.borderTopColor = '';
 			tabContainer.style.borderTopWidth = '';
 			tabContainer.style.borderTopStyle = '';
@@ -1240,7 +1293,7 @@ export class TabsTitleControl extends TitleControl {
 	}
 }
 
-registerThemingParticipant((theme: ITheme, collector: ICssStyleCollector) => {
+registerThemingParticipant((theme: IColorTheme, collector: ICssStyleCollector) => {
 	// Add border between tabs and breadcrumbs in high contrast mode.
 	if (theme.type === HIGH_CONTRAST) {
 		const borderColor = (theme.getColor(TAB_BORDER) || theme.getColor(contrastBorder));
@@ -1276,7 +1329,7 @@ registerThemingParticipant((theme: ITheme, collector: ICssStyleCollector) => {
 
 	// High Contrast Border Color for Editor Actions
 	const contrastBorderColor = theme.getColor(contrastBorder);
-	if (contrastBorder) {
+	if (contrastBorderColor) {
 		collector.addRule(`
 			.monaco-workbench .part.editor > .content .editor-group-container > .title .editor-actions {
 				outline: 1px solid ${contrastBorderColor}

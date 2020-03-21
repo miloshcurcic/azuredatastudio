@@ -3,8 +3,6 @@
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
-
 import { extensions, TreeItem } from 'vscode';
 import { Account } from 'azdata';
 
@@ -107,7 +105,9 @@ export class AzureResourceService {
 
 				if (extension.exports && extension.exports.provideResources) {
 					for (const resourceProvider of <azureResource.IAzureResourceProvider[]>extension.exports.provideResources()) {
-						this.doRegisterResourceProvider(resourceProvider);
+						if (resourceProvider) {
+							this.doRegisterResourceProvider(resourceProvider);
+						}
 					}
 				}
 			}

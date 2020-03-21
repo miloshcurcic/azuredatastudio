@@ -5,11 +5,10 @@
 
 import * as dom from 'vs/base/browser/dom';
 import { ITree, IRenderer } from 'vs/base/parts/tree/browser/tree';
-import { LIGHT } from 'vs/platform/theme/common/themeService';
+import { LIGHT, IThemeService } from 'vs/platform/theme/common/themeService';
 import { Disposable } from 'vs/base/common/lifecycle';
 import { Event, Emitter } from 'vs/base/common/event';
 import { ITreeComponentItem } from 'sql/workbench/common/views';
-import { IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
 import { TreeViewDataProvider } from './treeViewDataProvider';
 import { URI } from 'vs/base/common/uri';
 
@@ -95,7 +94,7 @@ export class TreeComponentRenderer extends Disposable implements IRenderer {
 
 	constructor(
 		private _dataProvider: TreeViewDataProvider,
-		private themeService: IWorkbenchThemeService,
+		private themeService: IThemeService,
 		public options?: { withCheckbox: boolean }
 	) {
 		super();
@@ -139,7 +138,7 @@ export class TreeComponentRenderer extends Disposable implements IRenderer {
 	 * Render a element, given an object bag returned by the template
 	 */
 	public renderElement(tree: ITree, element: ITreeComponentItem, templateId: string, templateData: TreeDataTemplate): void {
-		const icon = this.themeService.getTheme().type === LIGHT ? element.icon : element.iconDark;
+		const icon = this.themeService.getColorTheme().type === LIGHT ? element.icon : element.iconDark;
 		const iconUri = icon ? URI.revive(icon) : null;
 		templateData.icon.style.backgroundImage = iconUri ? `url('${iconUri.toString(true)}')` : '';
 		templateData.icon.style.backgroundRepeat = 'no-repeat';

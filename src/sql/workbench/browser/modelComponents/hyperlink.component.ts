@@ -10,12 +10,12 @@ import {
 
 import * as azdata from 'azdata';
 
-import { IComponent, IComponentDescriptor, IModelStore, ComponentEventType } from 'sql/workbench/browser/modelComponents/interfaces';
 import { TitledComponent } from 'sql/workbench/browser/modelComponents/titledComponent';
+import { IComponent, IComponentDescriptor, IModelStore, ComponentEventType } from 'sql/platform/dashboard/browser/interfaces';
 
 @Component({
 	selector: 'modelview-hyperlink',
-	template: `<a [href]="getUrl()" [title]="title" target="blank" (click)="onClick()">{{getLabel()}}</a>`
+	template: `<a [href]="getUrl()" [title]="title" [attr.aria-label]="ariaLabel" target="blank" (click)="onClick()">{{getLabel()}}</a>`
 })
 export default class HyperlinkComponent extends TitledComponent implements IComponent, OnDestroy, AfterViewInit {
 	@Input() descriptor: IComponentDescriptor;

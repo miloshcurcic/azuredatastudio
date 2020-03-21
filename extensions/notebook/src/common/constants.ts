@@ -3,7 +3,9 @@
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-'use strict';
+import * as nls from 'vscode-nls';
+
+const localize = nls.loadMessageBundle();
 
 // CONFIG VALUES ///////////////////////////////////////////////////////////
 export const extensionOutputChannel = 'Notebooks';
@@ -14,6 +16,7 @@ export const pythonVersion = '3.6.6';
 export const pythonPathConfigKey = 'pythonPath';
 export const existingPythonConfigKey = 'useExistingPython';
 export const notebookConfigKey = 'notebook';
+export const trustedBooksConfigKey = 'trustedBooks';
 export const maxBookSearchDepth = 'maxBookSearchDepth';
 
 export const winPlatform = 'win32';
@@ -27,6 +30,11 @@ export const jupyterReinstallDependenciesCommand = 'jupyter.reinstallDependencie
 export const jupyterAnalyzeCommand = 'jupyter.cmd.analyzeNotebook';
 export const jupyterManagePackages = 'jupyter.cmd.managePackages';
 export const jupyterConfigurePython = 'jupyter.cmd.configurePython';
+export const localhostName = 'localhost';
+export const localhostTitle = localize('managePackages.localhost', "localhost");
+export const PackageNotFoundError = localize('managePackages.packageNotFound', "Could not find the specified package");
+
+export const visitedNotebooksMementoKey = 'notebooks.visited';
 
 export enum BuiltInCommands {
 	SetContext = 'setContext'

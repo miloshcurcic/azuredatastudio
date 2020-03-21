@@ -37,12 +37,12 @@ export interface ICellRangeDecorator {
 }
 
 export class CellRangeSelector<T> implements ICellRangeSelector<T> {
-	private grid: Slick.Grid<T>;
-	private dragging: boolean;
+	private grid!: Slick.Grid<T>;
+	private dragging?: boolean;
 	private handler = new Slick.EventHandler();
-	private decorator: ICellRangeDecorator;
-	private canvas: HTMLCanvasElement;
-	private currentlySelectedRange: { start: Slick.Cell, end?: Slick.Cell };
+	private decorator!: ICellRangeDecorator;
+	private canvas!: HTMLCanvasElement;
+	private currentlySelectedRange?: { start: Slick.Cell, end?: Slick.Cell };
 
 	public onBeforeCellRangeSelected = new Slick.Event<Slick.Cell>();
 	public onCellRangeSelected = new Slick.Event<Slick.Range>();
@@ -59,9 +59,9 @@ export class CellRangeSelector<T> implements ICellRangeSelector<T> {
 		this.canvas = this.grid.getCanvasNode();
 		this.handler
 			.subscribe(this.grid.onDragInit, e => this.handleDragInit(e))
-			.subscribe(this.grid.onDragStart, (e: MouseEvent, dd) => this.handleDragStart(e, dd))
-			.subscribe(this.grid.onDrag, (e: MouseEvent, dd) => this.handleDrag(e, dd))
-			.subscribe(this.grid.onDragEnd, (e: MouseEvent, dd) => this.handleDragEnd(e, dd));
+			.subscribe(this.grid.onDragStart, (e: DOMEvent, dd) => this.handleDragStart(e as MouseEvent, dd))
+			.subscribe(this.grid.onDrag, (e: DOMEvent, dd) => this.handleDrag(e as MouseEvent, dd))
+			.subscribe(this.grid.onDragEnd, (e: DOMEvent, dd) => this.handleDragEnd(e as MouseEvent, dd));
 	}
 
 	public destroy() {

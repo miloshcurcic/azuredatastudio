@@ -29,6 +29,14 @@ declare module 'azdata' {
 		export function getConnection(uri: string): Thenable<ConnectionProfile>;
 	}
 
+	export namespace nb {
+		export interface NotebookDocument {
+			/**
+			 * Sets the trust mode for the notebook document.
+			 */
+			setTrusted(state: boolean);
+		}
+	}
 
 	export type SqlDbType = 'BigInt' | 'Binary' | 'Bit' | 'Char' | 'DateTime' | 'Decimal'
 		| 'Float' | 'Image' | 'Int' | 'Money' | 'NChar' | 'NText' | 'NVarChar' | 'Real'
@@ -121,9 +129,98 @@ declare module 'azdata' {
 	 * Add OssRdbms for sqlops AzureResource.
 	 */
 	export enum AzureResource {
-		OssRdbms = 2
+		OssRdbms = 2,
+		AzureKeyVault = 3
+	}
+
+	export interface ModelBuilder {
+		radioCardGroup(): ComponentBuilder<RadioCardGroupComponent>;
+		separator(): ComponentBuilder<SeparatorComponent>;
+	}
+
+	export interface RadioCard {
+		id: string;
+		label: string;
+		descriptions?: RadioCardDescription[];
+		icon?: string | vscode.Uri | { light: string | vscode.Uri; dark: string | vscode.Uri };
+	}
+
+	export interface RadioCardDescription {
+		ariaLabel: string;
+		labelHeader: string;
+		contents: RadioCardLabelValuePair[];
+		valueHeader?: string;
+	}
+
+	export interface RadioCardLabelValuePair {
+		label: string;
+		value?: string;
+	}
+
+	export interface RadioCardGroupComponentProperties extends ComponentProperties, TitledComponentProperties {
+		cards: RadioCard[];
+		cardWidth: string;
+		cardHeight: string;
+		iconWidth?: string;
+		iconHeight?: string;
+		selectedCardId?: string;
+	}
+
+	export interface RadioCardGroupComponent extends Component, RadioCardGroupComponentProperties {
+		onSelectionChanged: vscode.Event<any>;
+	}
+
+	export interface SeparatorComponent extends Component {
 	}
 
 	export interface DeclarativeTableProperties extends ComponentProperties {
 	}
+
+	export interface ComponentProperties {
+		ariaHidden?: boolean;
+	}
+
+	export interface ComponentWithIconProperties {
+		/**
+		 * The path for the icon with optional dark-theme away alternative
+		 */
+		iconPath?: string | vscode.Uri | { light: string | vscode.Uri; dark: string | vscode.Uri };
+		/**
+		 * The height of the icon
+		 */
+		iconHeight?: number | string;
+		/**
+		 * The width of the icon
+		 */
+		iconWidth?: number | string;
+		/**
+		 * The title for the icon. This title will show when hovered over
+		 */
+		title?: string;
+	}
+
+	export interface ComponentWithIcon extends ComponentWithIconProperties {
+	}
+
+	export interface ImageComponent extends ComponentWithIcon {
+	}
+
+	export interface ImageComponentProperties extends ComponentProperties, ComponentWithIconProperties {
+	}
+
+	export interface InputBoxProperties extends ComponentProperties {
+		validationErrorMessage?: string;
+	}
+
+	export interface CheckBoxProperties {
+		required?: boolean;
+	}
+
+	export namespace nb {
+		/**
+		 * An event that is emitted when the active Notebook editor is changed.
+		 */
+		export const onDidChangeActiveNotebookEditor: vscode.Event<NotebookEditor>;
+	}
 }
+

@@ -27,6 +27,7 @@ const util = require('./util');
 const root = path.dirname(path.dirname(__dirname));
 const commit = util.getVersion(root);
 const sourceMappingURLBase = `https://ticino.blob.core.windows.net/sourcemaps/${commit}`;
+const product = require('../../product.json');
 
 function fromLocal(extensionPath: string): Stream {
 	const webpackFilename = path.join(extensionPath, 'extension.webpack.config.js');
@@ -216,12 +217,13 @@ export function fromMarketplace(extensionName: string, version: string, metadata
 
 const excludedExtensions = [
 	'vscode-api-tests',
+	'vscode-web-playground',
 	'vscode-colorize-tests',
 	'vscode-test-resolver',
 	'ms-vscode.node-debug',
 	'ms-vscode.node-debug2',
-	// {{SQL CARBON EDIT}}
-	'integration-tests'
+	'integration-tests', // {{SQL CARBON EDIT}}
+	'ms.vscode.js-debug-nightly'
 ];
 
 // {{SQL CARBON EDIT}}
@@ -229,7 +231,7 @@ const externalExtensions = [
 	// This is the list of SQL extensions which the source code is included in this repository, but
 	// they get packaged separately. Adding extension name here, will make the build to create
 	// a separate vsix package for the extension and the extension will be excluded from the main package.
-	// Any extension not included here, will be installed by default.
+	// Any extension not included here will be installed by default.
 	'admin-tool-ext-win',
 	'agent',
 	'import',
@@ -239,20 +241,27 @@ const externalExtensions = [
 	'schema-compare',
 	'cms',
 	'query-history',
-	'liveshare'
+	'liveshare',
+	'sql-database-projects',
+	'machine-learning-services'
+];
+
+// extensions that require a rebuild since they have native parts
+const rebuildExtensions = [
+	'big-data-cluster',
+	'mssql'
 ];
 
 interface IBuiltInExtension {
 	name: string;
 	version: string;
 	repo: string;
+	forQualities?: ReadonlyArray<string>;
 	metadata: any;
 }
 
-const builtInExtensions: IBuiltInExtension[] = process.env['VSCODE_QUALITY'] === 'stable' ? require('../builtInExtensions.json') : require('../builtInExtensions-insiders.json');
-
-// {{SQL CARBON EDIT}} - End
-
+const builtInExtensions = (<IBuiltInExtension[]>require('../builtInExtensions.json'))
+	.filter(({ forQualities }) => !product.quality || forQualities?.includes?.(product.quality) !== false);
 
 export function packageLocalExtensionsStream(): NodeJS.ReadWriteStream {
 	const localExtensionDescriptions = (<string[]>glob.sync('extensions/*/package.json'))
@@ -302,3 +311,26 @@ export function packageExternalExtensionsStream(): NodeJS.ReadWriteStream {
 	return es.merge(builtExtensions);
 }
 // {{SQL CARBON EDIT}} - End
+
+export function cleanRebuildExtensions(root: string): Promise<void> {
+	return Promise.all(rebuildExtensions.map(async e => {
+		await util2.rimraf(path.join(root, e))();
+	})).then();
+}
+
+export function packageRebuildExtensionsStream(): NodeJS.ReadWriteStream {
+	const extenalExtensionDescriptions = (<string[]>glob.sync('extensions/*/package.json'))
+		.map(manifestPath => {
+			const extensionPath = path.dirname(path.join(root, manifestPath));
+			const extensionName = path.basename(extensionPath);
+			return { name: extensionName, path: extensionPath };
+		})
+		.filter(({ name }) => rebuildExtensions.indexOf(name) >= 0);
+
+	const builtExtensions = extenalExtensionDescriptions.map(extension => {
+		return fromLocal(extension.path)
+			.pipe(rename(p => p.dirname = `extensions/${extension.name}/${p.dirname}`));
+	});
+
+	return es.merge(builtExtensions);
+}

@@ -10,12 +10,12 @@ import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
  * Implements the various additional navigation  keybindings we want out of slickgrid
  */
 export class AdditionalKeyBindings<T> implements Slick.Plugin<T> {
-	private grid: Slick.Grid<T>;
+	private grid!: Slick.Grid<T>;
 	private handler = new Slick.EventHandler();
 
 	public init(grid: Slick.Grid<T>) {
 		this.grid = grid;
-		this.handler.subscribe(this.grid.onKeyDown, (e: KeyboardEvent, args) => this.handleKeyDown(e, args));
+		this.handler.subscribe(this.grid.onKeyDown, (e: DOMEvent, args) => this.handleKeyDown(e as KeyboardEvent, args));
 	}
 
 	public destroy() {

@@ -10,7 +10,7 @@ export interface IRowNumberColumnOptions {
 
 export class RowNumberColumn<T> implements Slick.Plugin<T> {
 	private handler = new Slick.EventHandler();
-	private grid: Slick.Grid<T>;
+	private grid!: Slick.Grid<T>;
 
 	constructor(private options: IRowNumberColumnOptions) {
 	}
@@ -18,8 +18,8 @@ export class RowNumberColumn<T> implements Slick.Plugin<T> {
 	public init(grid: Slick.Grid<T>) {
 		this.grid = grid;
 		this.handler
-			.subscribe(this.grid.onClick, (e: MouseEvent, args: Slick.OnClickEventArgs<T>) => this.handleClick(e, args))
-			.subscribe(this.grid.onHeaderClick, (e: MouseEvent, args: Slick.OnHeaderClickEventArgs<T>) => this.handleHeaderClick(e, args));
+			.subscribe(this.grid.onClick, (e: DOMEvent, args: Slick.OnClickEventArgs<T>) => this.handleClick(e as MouseEvent, args))
+			.subscribe(this.grid.onHeaderClick, (e: DOMEvent, args: Slick.OnHeaderClickEventArgs<T>) => this.handleHeaderClick(e as MouseEvent, args));
 	}
 
 	public destroy() {

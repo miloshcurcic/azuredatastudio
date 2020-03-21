@@ -8,8 +8,9 @@ import * as path from 'path';
 import * as nls from 'vscode-nls';
 import * as azdata from 'azdata';
 import { ExecOptions } from 'child_process';
-import * as decompress from 'decompress';
 import * as request from 'request';
+import * as zip from 'adm-zip';
+import * as tar from 'tar';
 
 import { ApiWrapper } from '../common/apiWrapper';
 import * as constants from '../common/constants';
@@ -38,7 +39,24 @@ function msgDependenciesInstallationFailed(errorMessage: string): string { retur
 function msgDownloadPython(platform: string, pythonDownloadUrl: string): string { return localize('msgDownloadPython', "Downloading local python for platform: {0} to {1}", platform, pythonDownloadUrl); }
 function msgPackageRetrievalFailed(errorMessage: string): string { return localize('msgPackageRetrievalFailed', "Encountered an error when trying to retrieve list of installed packages: {0}", errorMessage); }
 
-export class JupyterServerInstallation {
+export interface IJupyterServerInstallation {
+	installCondaPackages(packages: PythonPkgDetails[], useMinVersion: boolean): Promise<void>;
+	configurePackagePaths(): Promise<void>;
+	startInstallProcess(forceInstall: boolean, installSettings?: { installPath: string, existingPython: boolean }): Promise<void>;
+	getInstalledPipPackages(): Promise<PythonPkgDetails[]>;
+	getInstalledCondaPackages(): Promise<PythonPkgDetails[]>;
+	uninstallCondaPackages(packages: PythonPkgDetails[]): Promise<void>;
+	usingConda: boolean;
+	getCondaExePath(): string;
+	executeBufferedCommand(command: string): Promise<string>;
+	executeStreamedCommand(command: string): Promise<void>;
+	installPipPackages(packages: PythonPkgDetails[], useMinVersion: boolean): Promise<void>;
+	uninstallPipPackages(packages: PythonPkgDetails[]): Promise<void>;
+	pythonExecutable: string;
+	pythonInstallationPath: string;
+	installPythonPackage(backgroundOperation: azdata.BackgroundOperation, usingExistingPython: boolean, pythonInstallationPath: string, outputChannel: OutputChannel): Promise<void>;
+}
+export class JupyterServerInstallation implements IJupyterServerInstallation {
 	public apiWrapper: ApiWrapper;
 	public extensionPath: string;
 	public pythonBinPath: string;
@@ -69,6 +87,9 @@ export class JupyterServerInstallation {
 		}, {
 			name: 'sparkmagic',
 			version: '0.12.9'
+		}, {
+			name: 'Kqlmagic',
+			version: '0.1.108'
 		}
 	];
 
@@ -78,15 +99,13 @@ export class JupyterServerInstallation {
 			version: '1.3.0'
 		}, {
 			name: 'powershell-kernel',
-			version: '0.1.2'
+			version: '0.1.3'
 		}
 	];
 
 	private readonly _expectedPythonPackages = this._commonPackages.concat(this._commonPipPackages);
-
-	private readonly _expectedCondaPackages = this._commonPackages.concat([{ name: 'pykerberos', version: '1.2.1' }]);
-
 	private readonly _expectedCondaPipPackages = this._commonPipPackages;
+	private readonly _expectedCondaPackages: PythonPkgDetails[];
 
 	constructor(extensionPath: string, outputChannel: OutputChannel, apiWrapper: ApiWrapper, pythonInstallationPath?: string) {
 		this.extensionPath = extensionPath;
@@ -98,6 +117,12 @@ export class JupyterServerInstallation {
 		this._usingExistingPython = JupyterServerInstallation.getExistingPythonSetting(this.apiWrapper);
 
 		this._prompter = new CodeAdapter();
+
+		if (process.platform !== constants.winPlatform) {
+			this._expectedCondaPackages = this._commonPackages.concat([{ name: 'pykerberos', version: '1.2.1' }]);
+		} else {
+			this._expectedCondaPackages = this._commonPackages;
+		}
 	}
 
 	private async installDependencies(backgroundOperation: azdata.BackgroundOperation, forceInstall: boolean): Promise<void> {
@@ -109,7 +134,7 @@ export class JupyterServerInstallation {
 			backgroundOperation.updateStatus(azdata.TaskStatus.InProgress, msgInstallPkgProgress);
 
 			try {
-				await this.installPythonPackage(backgroundOperation);
+				await this.installPythonPackage(backgroundOperation, this._usingExistingPython, this._pythonInstallationPath, this.outputChannel);
 
 				if (this._usingExistingPython) {
 					await this.upgradePythonPackages(false, forceInstall);
@@ -127,8 +152,8 @@ export class JupyterServerInstallation {
 		}
 	}
 
-	private installPythonPackage(backgroundOperation: azdata.BackgroundOperation): Promise<void> {
-		if (this._usingExistingPython) {
+	public installPythonPackage(backgroundOperation: azdata.BackgroundOperation, usingExistingPython: boolean, pythonInstallationPath: string, outputChannel: OutputChannel): Promise<void> {
+		if (usingExistingPython) {
 			return Promise.resolve();
 		}
 
@@ -155,7 +180,7 @@ export class JupyterServerInstallation {
 		}
 
 		return new Promise((resolve, reject) => {
-			let installPath = this._pythonInstallationPath;
+			let installPath = pythonInstallationPath;
 			backgroundOperation.updateStatus(azdata.TaskStatus.InProgress, msgDownloadPython(platformId, pythonDownloadUrl));
 			fs.mkdirs(installPath, (err) => {
 				if (err) {
@@ -179,7 +204,7 @@ export class JupyterServerInstallation {
 
 						let totalBytes = parseInt(response.headers['content-length']);
 						totalMegaBytes = totalBytes / (1024 * 1024);
-						this.outputChannel.appendLine(`${msgPythonDownloadPending} (0 / ${totalMegaBytes.toFixed(2)} MB)`);
+						outputChannel.appendLine(`${msgPythonDownloadPending} (0 / ${totalMegaBytes.toFixed(2)} MB)`);
 					})
 					.on('data', (data) => {
 						receivedBytes += data.length;
@@ -187,7 +212,7 @@ export class JupyterServerInstallation {
 							let receivedMegaBytes = receivedBytes / (1024 * 1024);
 							let percentage = receivedMegaBytes / totalMegaBytes;
 							if (percentage >= printThreshold) {
-								this.outputChannel.appendLine(`${msgPythonDownloadPending} (${receivedMegaBytes.toFixed(2)} / ${totalMegaBytes.toFixed(2)} MB)`);
+								outputChannel.appendLine(`${msgPythonDownloadPending} (${receivedMegaBytes.toFixed(2)} / ${totalMegaBytes.toFixed(2)} MB)`);
 								printThreshold += 0.1;
 							}
 						}
@@ -197,18 +222,26 @@ export class JupyterServerInstallation {
 				downloadRequest.pipe(fs.createWriteStream(pythonPackagePathLocal))
 					.on('close', async () => {
 						//unpack python zip/tar file
-						this.outputChannel.appendLine(msgPythonUnpackPending);
+						outputChannel.appendLine(msgPythonUnpackPending);
 						let pythonSourcePath = path.join(installPath, constants.pythonBundleVersion);
 						if (await utils.exists(pythonSourcePath)) {
 							try {
+								// eslint-disable-next-line no-sync
 								fs.removeSync(pythonSourcePath);
 							} catch (err) {
 								backgroundOperation.updateStatus(azdata.TaskStatus.InProgress, msgPythonUnpackError);
 								return reject(err);
 							}
 						}
-						decompress(pythonPackagePathLocal, installPath).then(files => {
-							//Delete zip/tar file
+						if (utils.getOSPlatform() === utils.Platform.Windows) {
+							try {
+								let zippedFile = new zip(pythonPackagePathLocal);
+								zippedFile.extractAllTo(installPath);
+							} catch (err) {
+								backgroundOperation.updateStatus(azdata.TaskStatus.InProgress, msgPythonUnpackError);
+								reject(err);
+							}
+							// Delete zip file
 							fs.unlink(pythonPackagePathLocal, (err) => {
 								if (err) {
 									backgroundOperation.updateStatus(azdata.TaskStatus.InProgress, msgPythonUnpackError);
@@ -216,13 +249,26 @@ export class JupyterServerInstallation {
 								}
 							});
 
-							this.outputChannel.appendLine(msgPythonDownloadComplete);
+							outputChannel.appendLine(msgPythonDownloadComplete);
 							backgroundOperation.updateStatus(azdata.TaskStatus.InProgress, msgPythonDownloadComplete);
 							resolve();
-						}).catch(err => {
-							backgroundOperation.updateStatus(azdata.TaskStatus.InProgress, msgPythonUnpackError);
-							reject(err);
-						});
+						} else {
+							tar.extract({ file: pythonPackagePathLocal, cwd: installPath }).then(() => {
+								// Delete tar file
+								fs.unlink(pythonPackagePathLocal, (err) => {
+									if (err) {
+										backgroundOperation.updateStatus(azdata.TaskStatus.InProgress, msgPythonUnpackError);
+										reject(err);
+									}
+								});
+								outputChannel.appendLine(msgPythonDownloadComplete);
+								backgroundOperation.updateStatus(azdata.TaskStatus.InProgress, msgPythonDownloadComplete);
+								resolve();
+							}).catch(err => {
+								backgroundOperation.updateStatus(azdata.TaskStatus.InProgress, msgPythonUnpackError);
+								reject(err);
+							});
+						}
 					})
 					.on('error', (downloadError) => {
 						backgroundOperation.updateStatus(azdata.TaskStatus.InProgress, msgPythonDownloadError);
@@ -621,7 +667,7 @@ export class JupyterServerInstallation {
 		}
 	}
 
-	private async executeStreamedCommand(command: string): Promise<void> {
+	public async executeStreamedCommand(command: string): Promise<void> {
 		await utils.executeStreamedCommand(command, { env: this.execOptions.env }, this.outputChannel);
 	}
 
@@ -638,6 +684,13 @@ export class JupyterServerInstallation {
 			process.platform === constants.winPlatform ? 'Scripts\\conda.exe' : 'bin/conda');
 	}
 
+	/**
+	 * Returns Python installation path
+	 */
+	public get pythonInstallationPath(): string {
+		return this._pythonInstallationPath;
+	}
+
 	public get usingConda(): boolean {
 		return this._usingConda;
 	}
@@ -648,7 +701,7 @@ export class JupyterServerInstallation {
 		}
 
 		let condaExePath = this.getCondaExePath();
-		// tslint:disable-next-line:no-sync
+		// eslint-disable-next-line no-sync
 		return fs.existsSync(condaExePath);
 	}
 
@@ -665,7 +718,7 @@ export class JupyterServerInstallation {
 
 		let useExistingInstall = JupyterServerInstallation.getExistingPythonSetting(apiWrapper);
 		let pythonExe = JupyterServerInstallation.getPythonExePath(pathSetting, useExistingInstall);
-		// tslint:disable-next-line:no-sync
+		// eslint-disable-next-line no-sync
 		return fs.existsSync(pythonExe);
 	}
 
@@ -696,7 +749,7 @@ export class JupyterServerInstallation {
 			let notebookConfig = apiWrapper.getConfiguration(constants.notebookConfigKey);
 			if (notebookConfig) {
 				let configPythonPath = notebookConfig[constants.pythonPathConfigKey];
-				// tslint:disable-next-line:no-sync
+				// eslint-disable-next-line no-sync
 				if (configPythonPath && fs.existsSync(configPythonPath)) {
 					path = configPythonPath;
 				}

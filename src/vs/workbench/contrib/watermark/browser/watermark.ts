@@ -26,9 +26,8 @@ import * as dom from 'vs/base/browser/dom';
 import { KeybindingLabel } from 'vs/base/browser/ui/keybindingLabel/keybindingLabel';
 import { IEditorGroupsService } from 'vs/workbench/services/editor/common/editorGroupsService';
 import { CommandsRegistry } from 'vs/platform/commands/common/commands';
-import { IDimension } from 'vs/platform/layout/browser/layoutService';
-// import { TERMINAL_COMMAND_ID } from 'vs/workbench/contrib/terminal/common/terminal';
 import { assertIsDefined } from 'vs/base/common/types';
+import { workbenchConfigurationNodeBase } from 'vs/workbench/common/configuration';
 
 // {{SQL CARBON EDIT}}
 import { NewNotebookAction } from 'sql/workbench/contrib/notebook/browser/notebookActions';
@@ -164,7 +163,7 @@ export class WatermarkContribution extends Disposable implements IWorkbenchContr
 		this.handleEditorPartSize(container, this.editorGroupsService.contentDimension);
 	}
 
-	private handleEditorPartSize(container: HTMLElement, dimension: IDimension): void {
+	private handleEditorPartSize(container: HTMLElement, dimension: dom.IDimension): void {
 		if (dimension.height <= 478) {
 			dom.addClass(container, 'max-height-478px');
 		} else {
@@ -196,9 +195,7 @@ Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench)
 
 Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
 	.registerConfiguration({
-		'id': 'workbench',
-		'order': 7,
-		'title': nls.localize('workbenchConfigurationTitle', "Workbench"),
+		...workbenchConfigurationNodeBase,
 		'properties': {
 			'workbench.tips.enabled': {
 				'type': 'boolean',

@@ -3,7 +3,6 @@
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import * as constants from '../constants';
 import * as azdata from 'azdata';
 import * as events from 'events';
 import * as nls from 'vscode-nls';
@@ -11,9 +10,9 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import CredentialServiceTokenCache from './tokenCache';
 import providerSettings from './providerSettings';
-import { AzureAccountProvider as AzureAccountProviderDeprecated } from './azureAccountProvider';
 import { AzureAccountProvider as AzureAccountProvider } from './azureAccountProvider2';
 import { AzureAccountProviderMetadata, ProviderSettings } from './interfaces';
+import * as loc from '../localizedConstants';
 
 let localize = nls.loadMessageBundle();
 
@@ -71,19 +70,18 @@ export class AzureAccountProviderService implements vscode.Disposable {
 		// let self = this;
 
 		let promises: Thenable<void>[] = providerSettings.map(provider => {
-			// return self._accountProviders[provider.metadata.id].clearTokenCache();
-			return Promise.resolve();
+			return this._accountProviders[provider.metadata.id]?.clearTokenCache();
 		});
 
 		return Promise.all(promises)
 			.then(
 				() => {
 					let message = localize('clearTokenCacheSuccess', "Token cache successfully cleared");
-					vscode.window.showInformationMessage(`${constants.extensionName}: ${message}`);
+					vscode.window.showInformationMessage(`${loc.extensionName}: ${message}`);
 				},
 				err => {
 					let message = localize('clearTokenCacheFailure', "Failed to clear token cache");
-					vscode.window.showErrorMessage(`${constants.extensionName}: ${message}: ${err}`);
+					vscode.window.showErrorMessage(`${loc.extensionName}: ${message}: ${err}`);
 				});
 	}
 
@@ -139,13 +137,7 @@ export class AzureAccountProviderService implements vscode.Disposable {
 				let tokenCacheKey = `azureTokenCache-${provider.metadata.id}`;
 				let tokenCachePath = path.join(this._userStoragePath, tokenCacheKey);
 				let tokenCache = new CredentialServiceTokenCache(self._credentialProvider, tokenCacheKey, tokenCachePath);
-				let accountProvider: azdata.AccountProvider;
-
-				if (/*config.get('useNewSignInExperience') === true && */ Boolean(process.env['NEW_SIGN_IN_EXPERIENCE']) === true) {
-					accountProvider = new AzureAccountProvider(provider.metadata as AzureAccountProviderMetadata, tokenCache);
-				} else {
-					accountProvider = new AzureAccountProviderDeprecated(provider.metadata as AzureAccountProviderMetadata, tokenCache);
-				}
+				let accountProvider = new AzureAccountProvider(provider.metadata as AzureAccountProviderMetadata, tokenCache, this._context);
 				self._accountProviders[provider.metadata.id] = accountProvider;
 				self._accountDisposals[provider.metadata.id] = azdata.accounts.registerAccountProvider(provider.metadata, accountProvider);
 				resolve();

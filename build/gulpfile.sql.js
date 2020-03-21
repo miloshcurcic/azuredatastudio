@@ -102,7 +102,10 @@ function installService() {
 		let runtime = p.runtimeId;
 		// fix path since it won't be correct
 		config.installDirectory = path.join(__dirname, '../extensions/mssql/src', config.installDirectory);
-		var installer = new serviceDownloader(config);
+		let installer = new serviceDownloader(config);
+		installer.eventEmitter.onAny((event, ...values) => {
+			console.log(`ServiceDownloader Event : ${event}${values && values.length > 0 ? ` - ${values.join(' ')}` : ''}`);
+		});
 		let serviceInstallFolder = installer.getInstallDirectory(runtime);
 		console.log('Cleaning up the install folder: ' + serviceInstallFolder);
 		return del(serviceInstallFolder + '/*').then(() => {
@@ -123,7 +126,10 @@ gulp.task('install-ssmsmin', () => {
 	const runtime = 'Windows_64'; // admin-tool-ext is a windows only extension, and we only ship a 64 bit version, so locking the binaries as such
 	// fix path since it won't be correct
 	config.installDirectory = path.join(__dirname, '..', 'extensions', 'admin-tool-ext-win', config.installDirectory);
-	var installer = new serviceDownloader(config);
+	let installer = new serviceDownloader(config);
+	installer.eventEmitter.onAny((event, ...values) => {
+		console.log(`ServiceDownloader Event : ${event}${values && values.length > 0 ? ` - ${values.join(' ')}` : ''}`);
+	});
 	const serviceInstallFolder = installer.getInstallDirectory(runtime);
 	const serviceCleanupFolder = path.join(serviceInstallFolder, '..');
 	console.log('Cleaning up the install folder: ' + serviceCleanupFolder);
@@ -146,7 +152,7 @@ gulp.task('package-external-extensions', task.series(
 			return { name: extensionName, path: extensionPath };
 		}).map(element => {
 			const pkgJson = require(path.join(element.path, 'package.json'));
-			const vsixDirectory = path.join(path.dirname(root), 'vsix');
+			const vsixDirectory = path.join(root, '.build', 'extensions');
 			mkdirp.sync(vsixDirectory);
 			const packagePath = path.join(vsixDirectory, `${pkgJson.name}-${pkgJson.version}.vsix`);
 			console.info('Creating vsix for ' + element.path + ' result:' + packagePath);
@@ -159,4 +165,9 @@ gulp.task('package-external-extensions', task.series(
 
 		return Promise.all(vsixes);
 	})
+));
+
+gulp.task('package-rebuild-extensions', task.series(
+	task.define('clean-rebuild-extensions', () => ext.cleanRebuildExtensions('.build/extensions')),
+	task.define('rebuild-extensions-build', () => ext.packageRebuildExtensionsStream().pipe(gulp.dest('.build'))),
 ));

@@ -5,6 +5,7 @@
 
 import { createDecorator } from 'vs/platform/instantiation/common/instantiation';
 import { URI } from 'vs/base/common/uri';
+import { IUserHomeProvider } from 'vs/base/common/labels';
 
 export interface ParsedArgs {
 	_: string[];
@@ -38,7 +39,6 @@ export interface ParsedArgs {
 	'builtin-extensions-dir'?: string;
 	extensionDevelopmentPath?: string[]; // // undefined or array of 1 or more local paths or URIs
 	extensionTestsPath?: string; // either a local path or a URI
-	'extension-development-confirm-save'?: boolean;
 	'inspect-extensions'?: string;
 	'inspect-brk-extensions'?: string;
 	debugId?: string;
@@ -81,6 +81,8 @@ export interface ParsedArgs {
 	user?: string;
 	command?: string;
 	// {{SQL CARBON EDIT}} End
+	'sync'?: 'on' | 'off';
+
 	// chromium command line args: https://electronjs.org/docs/all#supported-chrome-command-line-switches
 	'no-proxy-server'?: boolean;
 	'proxy-server'?: string;
@@ -91,6 +93,10 @@ export interface ParsedArgs {
 	'js-flags'?: string;
 	'disable-gpu'?: boolean;
 	'nolazy'?: boolean;
+	'force-device-scale-factor'?: string;
+	'force-renderer-accessibility'?: boolean;
+	'ignore-certificate-error'?: boolean;
+	'allow-insecure-localhost'?: boolean;
 }
 
 export const IEnvironmentService = createDecorator<IEnvironmentService>('environmentService');
@@ -106,21 +112,18 @@ export interface IExtensionHostDebugParams extends IDebugParams {
 
 export const BACKUPS = 'Backups';
 
-export interface IEnvironmentService {
+export interface IEnvironmentService extends IUserHomeProvider {
 
 	_serviceBrand: undefined;
 
 	args: ParsedArgs;
 
 	execPath: string;
-	cliPath: string;
 	appRoot: string;
 
 	userHome: string;
 	userDataPath: string;
 
-	appNameLong: string;
-	appQuality?: string;
 	appSettingsHome: URI;
 
 	// user roaming data
@@ -129,12 +132,12 @@ export interface IEnvironmentService {
 	keybindingsResource: URI;
 	keyboardLayoutResource: URI;
 	argvResource: URI;
+	snippetsHome: URI;
 
 	// sync resources
 	userDataSyncLogResource: URI;
-	settingsSyncPreviewResource: URI;
+	userDataSyncHome: URI;
 
-	machineSettingsHome: URI;
 	machineSettingsResource: URI;
 
 	globalStorageHome: string;
@@ -151,14 +154,12 @@ export interface IEnvironmentService {
 	extensionsPath?: string;
 	extensionDevelopmentLocationURI?: URI[];
 	extensionTestsLocationURI?: URI;
+	logExtensionHostCommunication?: boolean;
 
 	debugExtensionHost: IExtensionHostDebugParams;
 
 	isBuilt: boolean;
-	wait: boolean;
-	status: boolean;
 
-	log?: string;
 	logsPath: string;
 	verbose: boolean;
 
@@ -169,10 +170,9 @@ export interface IEnvironmentService {
 
 	installSourcePath: string;
 	disableUpdates: boolean;
-	disableCrashReporter: boolean;
 
 	driverHandle?: string;
 	driverVerbose: boolean;
 
-	galleryMachineIdResource?: URI;
+	serviceMachineIdResource?: URI;
 }

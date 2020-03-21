@@ -51,11 +51,11 @@ export class RowDetailView<T extends Slick.SlickData> {
 	public readonly onAfterRowDetailToggle = new Slick.Event<{ grid: Slick.Grid<T>, item: T }>();
 	public readonly onBeforeRowDetailToggle = new Slick.Event<{ grid: Slick.Grid<T>, item: T }>();
 
-	private _grid: Slick.Grid<T>;
+	private _grid!: Slick.Grid<T>;
 	private _expandedRows: Array<ExtendedItem<T>> = [];
 	private _handler = new Slick.EventHandler();
 
-	private _dataView: AugmentedDataView<T>;
+	private _dataView!: AugmentedDataView<T>;
 	private _options: IRowDetailViewOptions<T>;
 
 	constructor(options: IRowDetailViewOptions<T>) {
@@ -71,7 +71,7 @@ export class RowDetailView<T extends Slick.SlickData> {
 		this._grid.getOptions().minRowBuffer = this._options.panelRows + 3;
 
 		this._handler
-			.subscribe(this._grid.onClick, (e: MouseEvent, args: Slick.OnClickEventArgs<T>) => this.handleClick(e, args))
+			.subscribe(this._grid.onClick, (e: DOMEvent, args: Slick.OnClickEventArgs<T>) => this.handleClick(e as MouseEvent, args))
 			.subscribe(this._grid.onSort, () => this.handleSort())
 			.subscribe(this._grid.onScroll, () => this.handleScroll());
 

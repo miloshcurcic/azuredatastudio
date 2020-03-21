@@ -4,6 +4,7 @@
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.packageRebuildExtensionsStream = exports.cleanRebuildExtensions = exports.packageExternalExtensionsStream = exports.packageMarketplaceExtensionsStream = exports.packageLocalExtensionsStream = exports.fromMarketplace = void 0;
 const es = require("event-stream");
 const fs = require("fs");
 const glob = require("glob");
@@ -27,6 +28,7 @@ const util = require('./util');
 const root = path.dirname(path.dirname(__dirname));
 const commit = util.getVersion(root);
 const sourceMappingURLBase = `https://ticino.blob.core.windows.net/sourcemaps/${commit}`;
+const product = require('../../product.json');
 function fromLocal(extensionPath) {
     const webpackFilename = path.join(extensionPath, 'extension.webpack.config.js');
     const input = fs.existsSync(webpackFilename)
@@ -181,19 +183,20 @@ function fromMarketplace(extensionName, version, metadata) {
 exports.fromMarketplace = fromMarketplace;
 const excludedExtensions = [
     'vscode-api-tests',
+    'vscode-web-playground',
     'vscode-colorize-tests',
     'vscode-test-resolver',
     'ms-vscode.node-debug',
     'ms-vscode.node-debug2',
-    // {{SQL CARBON EDIT}}
-    'integration-tests'
+    'integration-tests',
+    'ms.vscode.js-debug-nightly'
 ];
 // {{SQL CARBON EDIT}}
 const externalExtensions = [
     // This is the list of SQL extensions which the source code is included in this repository, but
     // they get packaged separately. Adding extension name here, will make the build to create
     // a separate vsix package for the extension and the extension will be excluded from the main package.
-    // Any extension not included here, will be installed by default.
+    // Any extension not included here will be installed by default.
     'admin-tool-ext-win',
     'agent',
     'import',
@@ -203,10 +206,17 @@ const externalExtensions = [
     'schema-compare',
     'cms',
     'query-history',
-    'liveshare'
+    'liveshare',
+    'sql-database-projects',
+    'machine-learning-services'
 ];
-const builtInExtensions = process.env['VSCODE_QUALITY'] === 'stable' ? require('../builtInExtensions.json') : require('../builtInExtensions-insiders.json');
-// {{SQL CARBON EDIT}} - End
+// extensions that require a rebuild since they have native parts
+const rebuildExtensions = [
+    'big-data-cluster',
+    'mssql'
+];
+const builtInExtensions = require('../builtInExtensions.json')
+    .filter(({ forQualities }) => { var _a; return !product.quality || ((_a = forQualities === null || forQualities === void 0 ? void 0 : forQualities.includes) === null || _a === void 0 ? void 0 : _a.call(forQualities, product.quality)) !== false; });
 function packageLocalExtensionsStream() {
     const localExtensionDescriptions = glob.sync('extensions/*/package.json')
         .map(manifestPath => {
@@ -251,3 +261,24 @@ function packageExternalExtensionsStream() {
 }
 exports.packageExternalExtensionsStream = packageExternalExtensionsStream;
 // {{SQL CARBON EDIT}} - End
+function cleanRebuildExtensions(root) {
+    return Promise.all(rebuildExtensions.map(async (e) => {
+        await util2.rimraf(path.join(root, e))();
+    })).then();
+}
+exports.cleanRebuildExtensions = cleanRebuildExtensions;
+function packageRebuildExtensionsStream() {
+    const extenalExtensionDescriptions = glob.sync('extensions/*/package.json')
+        .map(manifestPath => {
+        const extensionPath = path.dirname(path.join(root, manifestPath));
+        const extensionName = path.basename(extensionPath);
+        return { name: extensionName, path: extensionPath };
+    })
+        .filter(({ name }) => rebuildExtensions.indexOf(name) >= 0);
+    const builtExtensions = extenalExtensionDescriptions.map(extension => {
+        return fromLocal(extension.path)
+            .pipe(rename(p => p.dirname = `extensions/${extension.name}/${p.dirname}`));
+    });
+    return es.merge(builtExtensions);
+}
+exports.packageRebuildExtensionsStream = packageRebuildExtensionsStream;

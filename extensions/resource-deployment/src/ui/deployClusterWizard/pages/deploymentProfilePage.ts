@@ -5,38 +5,40 @@
 
 import * as azdata from 'azdata';
 import * as nls from 'vscode-nls';
-import { DeployClusterWizard } from '../deployClusterWizard';
-import { WizardPageBase } from '../../wizardPageBase';
-import * as VariableNames from '../constants';
-import { createFlexContainer } from '../../modelViewUtils';
 import { BdcDeploymentType } from '../../../interfaces';
 import { BigDataClusterDeploymentProfile } from '../../../services/bigDataClusterDeploymentProfile';
+import { createFlexContainer, createLabel } from '../../modelViewUtils';
+import { WizardPageBase } from '../../wizardPageBase';
+import * as VariableNames from '../constants';
+import { DeployClusterWizard } from '../deployClusterWizard';
 const localize = nls.loadMessageBundle();
 
-export class DeploymentProfilePage extends WizardPageBase<DeployClusterWizard> {
+const serviceScaleTableTitle = localize('deployCluster.serviceScaleTableTitle', "Service scale settings (Instances)");
+const storageTableTitle = localize('deployCluster.storageTableTitle', "Service storage settings (GB per Instance)");
+const featureTableTitle = localize('deployCluster.featureTableTitle', "Features");
+const YesText = localize('deployCluster.yesText', "Yes");
+const NoText = localize('deployCluster.noText', "No");
 
-	private _cards: azdata.CardComponent[] = [];
-	private _cardContainer: azdata.FlexContainer | undefined;
+export class DeploymentProfilePage extends WizardPageBase<DeployClusterWizard> {
 	private _loadingComponent: azdata.LoadingComponent | undefined;
-	private _view: azdata.ModelView | undefined;
+	private _container: azdata.FlexContainer | undefined;
 
 	constructor(wizard: DeployClusterWizard) {
-		super(localize('deployCluster.summaryPageTitle', "Deployment configuration template"),
-			localize('deployCluster.summaryPageDescription', "Select the target configuration template"), wizard);
+		super(localize('deployCluster.summaryPageTitle', "Deployment configuration profile"),
+			localize('deployCluster.summaryPageDescription', "Select the target configuration profile"), wizard);
 	}
 
 	public initialize(): void {
-		this.pageObject.registerContent((view: azdata.ModelView) => {
-			this._view = view;
-			this._cardContainer = view.modelBuilder.flexContainer().withLayout({ flexFlow: 'row', flexWrap: 'wrap' }).component();
+		this.pageObject.registerContent(async (view: azdata.ModelView): Promise<void> => {
+			this._container = view.modelBuilder.flexContainer().withLayout({ flexFlow: 'column' }).component();
 			const hintText = view.modelBuilder.text().withProperties<azdata.TextComponentProperties>({
 				value: localize('deployCluster.ProfileHintText', "Note: The settings of the deployment profile can be customized in later steps.")
 			}).component();
-			const container = createFlexContainer(view, [this._cardContainer, hintText], false);
+			const container = createFlexContainer(view, [this._container, hintText], false);
 			this._loadingComponent = view.modelBuilder.loadingComponent().withItem(container).withProperties<azdata.LoadingComponentProperties>({
 				loading: true,
-				loadingText: localize('deployCluster.loadingProfiles', "Loading deployment profiles"),
-				loadingCompletedText: localize('deployCluster.loadingProfilesCompleted', "Loading deployment profiles completed"),
+				loadingText: localize('deployCluster.loadingProfiles', "Loading profiles"),
+				loadingCompletedText: localize('deployCluster.loadingProfilesCompleted', "Loading profiles completed"),
 				showText: true
 			}).component();
 			let formBuilder = view.modelBuilder.formContainer().withFormItems(
@@ -51,99 +53,9 @@ export class DeploymentProfilePage extends WizardPageBase<DeployClusterWizard> {
 				}
 			).withLayout({ width: '100%', height: '100%' });
 			const form = formBuilder.withLayout({ width: '100%' }).component();
-			this.loadCards().then(() => {
-				this._loadingComponent!.loading = false;
-			}, (error) => {
-				this.wizard.wizardObject.message = {
-					level: azdata.window.MessageLevel.Error,
-					text: localize('deployCluster.loadProfileFailed', "Failed to load the deployment profiles: {0}", error.message)
-				};
-				this._loadingComponent!.loading = false;
-			});
-			return view.initializeModel(form);
+			await view.initializeModel(form);
+			await this.loadProfiles(view);
 		});
-	}
-
-	private createProfileCard(profile: BigDataClusterDeploymentProfile, view: azdata.ModelView): azdata.CardComponent {
-		const descriptions: azdata.CardDescriptionItem[] = [{
-			label: localize('deployCluster.serviceLabel', "Service"),
-			value: localize('deployCluster.instancesLabel', "Instances"),
-			fontWeight: 'bold'
-		}, {
-			label: localize('deployCluster.masterPoolLabel', "SQL Server Master"),
-			value: profile.sqlServerReplicas.toString()
-		}, {
-			label: localize('deployCluster.computePoolLable', "Compute"),
-			value: profile.computeReplicas.toString()
-		}, {
-			label: localize('deployCluster.dataPoolLabel', "Data"),
-			value: profile.dataReplicas.toString()
-		}, {
-			label: localize('deployCluster.hdfsLabel', "HDFS + Spark"),
-			value: profile.hdfsReplicas.toString()
-		}, {
-			label: '' // line separator
-		}, {
-			label: localize('deployCluster.storageSize', "Storage size"),
-			value: localize('deployCluster.gbPerInstance', "GB per Instance"),
-			fontWeight: 'bold'
-		}, {
-			label: localize('deployCluster.defaultDataStorage', "Data storage"),
-			value: profile.controllerDataStorageSize.toString()
-		}, {
-			label: localize('deployCluster.defaultLogStorage', "Log storage"),
-			value: profile.controllerLogsStorageSize.toString()
-		}, {
-			label: '' // line separator
-		}, {
-			label: localize('deployCluster.features', "Features"),
-			value: '',
-			fontWeight: 'bold'
-		}, {
-			label: localize('deployCluster.basicAuthentication', "Basic authentication"),
-			value: ''
-		}];
-		if (profile.activeDirectorySupported) {
-			descriptions.push({
-				label: localize('deployCluster.activeDirectoryAuthentication', "Active Directory authentication"),
-				value: ''
-			});
-		}
-
-		if (profile.sqlServerReplicas > 1) {
-			descriptions.push({
-				label: localize('deployCluster.hadr', "High Availability"),
-				value: ''
-			});
-		}
-
-		const card = view.modelBuilder.card().withProperties<azdata.CardProperties>({
-			cardType: azdata.CardType.VerticalButton,
-			label: profile.profileName,
-			descriptions: descriptions,
-			width: '240px',
-			height: '320px',
-		}).component();
-		this._cards.push(card);
-		this.wizard.registerDisposable(card.onCardSelectedChanged(() => {
-			if (card.selected) {
-				this.wizard.wizardObject.message = { text: '' };
-				this.setModelValuesByProfile(profile);
-				// clear the selected state of the previously selected card
-				this._cards.forEach(c => {
-					if (c !== card) {
-						c.selected = false;
-					}
-				});
-			} else {
-				// keep the selected state if no other card is selected
-				if (this._cards.filter(c => { return c !== card && c.selected; }).length === 0) {
-					card.selected = true;
-				}
-			}
-		}));
-
-		return card;
 	}
 
 	private setModelValuesByProfile(selectedProfile: BigDataClusterDeploymentProfile): void {
@@ -174,20 +86,134 @@ export class DeploymentProfilePage extends WizardPageBase<DeployClusterWizard> {
 		this.wizard.model.selectedProfile = selectedProfile;
 	}
 
-	private loadCards(): Promise<void> {
-		return this.wizard.azdataService.getDeploymentProfiles(this.wizard.deploymentType).then((profiles: BigDataClusterDeploymentProfile[]) => {
-			const defaultProfile: string = this.getDefaultProfile();
-
-			profiles.forEach(profile => {
-				const card = this.createProfileCard(profile, this._view!);
-				if (profile.profileName === defaultProfile) {
-					card.selected = true;
-					card.focus();
-					this.setModelValuesByProfile(profile);
-				}
-				this._cardContainer!.addItem(card, { flex: '0 0 auto' });
+	private async loadProfiles(view: azdata.ModelView): Promise<void> {
+		try {
+			const profiles = await this.wizard.azdataService.getDeploymentProfiles(this.wizard.deploymentType);
+			const radioButtonGroup = this.createRadioButtonGroup(view, profiles);
+			const serviceScaleTable = this.createServiceScaleTable(view, profiles);
+			const storageTable = this.createStorageTable(view, profiles);
+			const featuresTable = this.createFeaturesTable(view, profiles);
+			this._container!.addItem(createLabel(view, { text: localize('deployCluster.profileRadioGroupLabel', "Deployment configuration profile") }), {
+				CSSStyles: { 'margin-bottom': '5px' }
 			});
+			this._container!.addItem(radioButtonGroup, {
+				CSSStyles: { 'margin-bottom': '20px' }
+			});
+			this._container!.addItems([
+				this.createTableGroup(view, serviceScaleTableTitle, serviceScaleTable),
+				this.createTableGroup(view, storageTableTitle, storageTable),
+				this.createTableGroup(view, featureTableTitle, featuresTable)
+			], {
+				CSSStyles: { 'margin-bottom': '10px' }
+			});
+			this._loadingComponent!.loading = false;
+		} catch (error) {
+			this.wizard.wizardObject.message = {
+				level: azdata.window.MessageLevel.Error,
+				text: localize('deployCluster.loadProfileFailed', "Failed to load the deployment profiles: {0}", error.message)
+			};
+			this._loadingComponent!.loading = false;
+		}
+	}
+
+	private createRadioButtonGroup(view: azdata.ModelView, profiles: BigDataClusterDeploymentProfile[]): azdata.FlexContainer {
+		const defaultProfile: string = this.getDefaultProfile();
+		const groupName = 'profileGroup';
+		const radioButtons = profiles.map(profile => {
+			const checked = profile.profileName === defaultProfile;
+			const radioButton = view.modelBuilder.radioButton().withProperties<azdata.RadioButtonProperties>({
+				label: profile.profileName,
+				checked: checked,
+				name: groupName
+			}).component();
+			if (checked) {
+				this.setModelValuesByProfile(profile);
+				radioButton.focus();
+			}
+			this.wizard.registerDisposable(radioButton.onDidClick(() => {
+				this.wizard.wizardObject.message = { text: '' };
+				this.setModelValuesByProfile(profile);
+			}));
+			return radioButton;
 		});
+		return view.modelBuilder.flexContainer().withLayout({ flexFlow: 'row' }).withItems(radioButtons, { flex: '0 0 auto', CSSStyles: { 'margin-right': '20px' } }).component();
+	}
+
+	private createServiceScaleTable(view: azdata.ModelView, profiles: BigDataClusterDeploymentProfile[]): azdata.TableComponent {
+		const data = [
+			[localize('deployCluster.masterPoolLabel', "SQL Server Master"), ...profiles.map(profile => profile.sqlServerReplicas.toString())],
+			[localize('deployCluster.computePoolLable', "Compute"), ...profiles.map(profile => profile.computeReplicas.toString())],
+			[localize('deployCluster.dataPoolLabel', "Data"), ...profiles.map(profile => profile.dataReplicas.toString())],
+			[localize('deployCluster.hdfsLabel', "HDFS + Spark"), ...profiles.map(profile => profile.hdfsReplicas.toString())]
+		];
+
+		return view.modelBuilder.table().withProperties<azdata.TableComponentProperties>({
+			columns: [this.createDescriptionColumn(localize('deployCluster.ServiceName', "Service")), ...this.createProfileColumns(profiles)],
+			data: data,
+			title: serviceScaleTableTitle,
+			ariaLabel: serviceScaleTableTitle,
+			height: 140,
+			width: 200 + 150 * profiles.length
+		}).component();
+	}
+
+	private createStorageTable(view: azdata.ModelView, profiles: BigDataClusterDeploymentProfile[]): azdata.TableComponent {
+		const data = [
+			[localize('deployCluster.dataStorageType', "Data"), ...profiles.map(profile => profile.controllerDataStorageSize.toString())],
+			[localize('deployCluster.logsStorageType', "Logs"), ...profiles.map(profile => profile.controllerLogsStorageSize.toString())]
+		];
+		return view.modelBuilder.table().withProperties<azdata.TableComponentProperties>({
+			columns: [this.createDescriptionColumn(localize('deployCluster.StorageType', "Storage type")), ...this.createProfileColumns(profiles)],
+			data: data,
+			title: storageTableTitle,
+			ariaLabel: storageTableTitle,
+			height: 80,
+			width: 200 + 150 * profiles.length
+		}).component();
+	}
+
+	private createFeaturesTable(view: azdata.ModelView, profiles: BigDataClusterDeploymentProfile[]): azdata.TableComponent {
+		const data = [
+			[localize('deployCluster.basicAuthentication', "Basic authentication"), ...profiles.map(profile => YesText)],
+		];
+		if (profiles.findIndex(profile => profile.activeDirectorySupported) !== -1) {
+			data.push([localize('deployCluster.activeDirectoryAuthentication', "Active Directory authentication"), ...profiles.map(profile => profile.activeDirectorySupported ? YesText : NoText)]);
+		}
+
+		if (profiles.findIndex(profile => profile.sqlServerReplicas > 1) !== -1) {
+			data.push([localize('deployCluster.hadr', "High Availability"), ...profiles.map(profile => profile.sqlServerReplicas > 1 ? YesText : NoText)]);
+		}
+
+		return view.modelBuilder.table().withProperties<azdata.TableComponentProperties>({
+			columns: [this.createDescriptionColumn(localize('deployCluster.featureText', "Feature")), ...this.createProfileColumns(profiles)],
+			data: data,
+			title: featureTableTitle,
+			ariaLabel: featureTableTitle,
+			height: 30 + data.length * 25,
+			width: 200 + 150 * profiles.length
+		}).component();
+	}
+
+	private createDescriptionColumn(header: string): azdata.TableColumn {
+		return {
+			value: header,
+			width: 150
+		};
+	}
+
+	private createProfileColumns(profiles: BigDataClusterDeploymentProfile[]): azdata.TableColumn[] {
+		return profiles.map(profile => {
+			return {
+				value: profile.profileName,
+				width: 100
+			};
+		});
+	}
+	private createTableGroup(view: azdata.ModelView, title: string, table: azdata.TableComponent): azdata.FlexContainer {
+		return view.modelBuilder.flexContainer()
+			.withItems([createLabel(view, { text: title }), table], { CSSStyles: { 'margin-bottom': '5px' } })
+			.withLayout({ flexFlow: 'column' })
+			.component();
 	}
 
 	public onEnter() {
