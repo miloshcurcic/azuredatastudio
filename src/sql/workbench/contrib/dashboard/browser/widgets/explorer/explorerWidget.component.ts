@@ -7,26 +7,26 @@ import 'vs/css!sql/media/icons/common-icons';
 import 'vs/css!./media/explorerWidget';
 
 import { Component, Inject, forwardRef, OnInit, ViewChild, ElementRef } from '@angular/core';
-import { Router } from '@angular/router';
-
 import { DashboardWidget, IDashboardWidget, WidgetConfig, WIDGET_CONFIG } from 'sql/workbench/contrib/dashboard/browser/core/dashboardWidget';
 import { CommonServiceInterface } from 'sql/workbench/services/bootstrap/browser/commonServiceInterface.service';
-import { ExplorerFilter, ExplorerRenderer, ExplorerDataSource, ExplorerController, ExplorerModel } from './explorerTree';
+// import { ExplorerFilter, ExplorerRenderer, ExplorerDataSource, ExplorerController, ExplorerModel } from './explorerTree';
 import { ConnectionProfile } from 'sql/platform/connection/common/connectionProfile';
 import { ICapabilitiesService } from 'sql/platform/capabilities/common/capabilitiesService';
 
 import { InputBox, IInputOptions } from 'vs/base/browser/ui/inputbox/inputBox';
-import { attachInputBoxStyler, attachListStyler } from 'vs/platform/theme/common/styler';
+import { attachInputBoxStyler } from 'vs/platform/theme/common/styler';
 import * as nls from 'vs/nls';
-import { Tree } from 'vs/base/parts/tree/browser/treeImpl';
-import { getContentHeight } from 'vs/base/browser/dom';
+import { getContentHeight, getContentWidth, Dimension } from 'vs/base/browser/dom';
 import { Delayer } from 'vs/base/common/async';
 import { IContextViewService } from 'vs/platform/contextview/browser/contextView';
 import { IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
-import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
-import { ScrollbarVisibility } from 'vs/base/common/scrollable';
+// import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
+// import { ScrollbarVisibility } from 'vs/base/common/scrollable';
 import { subscriptionToDisposable } from 'sql/base/browser/lifecycle';
 import { ObjectMetadataWrapper } from 'sql/workbench/contrib/dashboard/browser/widgets/explorer/objectMetadataWrapper';
+import { Table } from 'sql/base/browser/ui/table/table';
+import { RowSelectionModel } from 'sql/base/browser/ui/table/plugins/rowSelectionModel.plugin';
+import { attachTableStyler } from 'sql/platform/theme/common/styler';
 
 @Component({
 	selector: 'explorer-widget',
@@ -34,17 +34,17 @@ import { ObjectMetadataWrapper } from 'sql/workbench/contrib/dashboard/browser/w
 })
 export class ExplorerWidget extends DashboardWidget implements IDashboardWidget, OnInit {
 	private _input: InputBox;
-	private _tree: Tree;
+	private _table: Table<Slick.SlickData>;
 	private _filterDelayer = new Delayer<void>(200);
-	private _treeController = this.instantiationService.createInstance(ExplorerController,
-		this._bootstrap.getUnderlyingUri(),
-		this._bootstrap.connectionManagementService,
-		this._router,
-		this._bootstrap
-	);
-	private _treeRenderer = new ExplorerRenderer();
-	private _treeDataSource = new ExplorerDataSource();
-	private _treeFilter = new ExplorerFilter();
+	// private _treeController = this.instantiationService.createInstance(ExplorerController,
+	// 	this._bootstrap.getUnderlyingUri(),
+	// 	this._bootstrap.connectionManagementService,
+	// 	this._router,
+	// 	this._bootstrap
+	// );
+	// private _treeRenderer = new ExplorerRenderer();
+	// private _treeDataSource = new ExplorerDataSource();
+	// private _treeFilter = new ExplorerFilter();
 
 	private _inited = false;
 
@@ -53,12 +53,10 @@ export class ExplorerWidget extends DashboardWidget implements IDashboardWidget,
 
 	constructor(
 		@Inject(forwardRef(() => CommonServiceInterface)) private readonly _bootstrap: CommonServiceInterface,
-		@Inject(forwardRef(() => Router)) private readonly _router: Router,
 		@Inject(WIDGET_CONFIG) protected _config: WidgetConfig,
 		@Inject(forwardRef(() => ElementRef)) private readonly _el: ElementRef,
 		@Inject(IWorkbenchThemeService) private readonly themeService: IWorkbenchThemeService,
 		@Inject(IContextViewService) private readonly contextViewService: IContextViewService,
-		@Inject(IInstantiationService) private readonly instantiationService: IInstantiationService,
 		@Inject(ICapabilitiesService) private readonly capabilitiesService: ICapabilitiesService
 	) {
 		super();
@@ -77,21 +75,26 @@ export class ExplorerWidget extends DashboardWidget implements IDashboardWidget,
 		this._input = new InputBox(this._inputContainer.nativeElement, this.contextViewService, inputOptions);
 		this._register(this._input.onDidChange(e => {
 			this._filterDelayer.trigger(() => {
-				this._treeFilter.filterString = e;
-				this._tree.refresh();
+				// this._treeFilter.filterString = e;
+				// this._tree.refresh();
 			});
 		}));
-		this._tree = new Tree(this._tableContainer.nativeElement, {
-			controller: this._treeController,
-			dataSource: this._treeDataSource,
-			filter: this._treeFilter,
-			renderer: this._treeRenderer
-		}, { horizontalScrollMode: ScrollbarVisibility.Auto });
-		this._tree.layout(getContentHeight(this._tableContainer.nativeElement));
+		// this._tree = new Tree(this._tableContainer.nativeElement, {
+		// 	controller: this._treeController,
+		// 	dataSource: this._treeDataSource,
+		// 	filter: this._treeFilter,
+		// 	renderer: this._treeRenderer
+		// }, { horizontalScrollMode: ScrollbarVisibility.Auto });
+		// this._tree.layout(getContentHeight(this._tableContainer.nativeElement));
+
+		this._table = new Table(this._tableContainer.nativeElement);
+		this._table.setSelectionModel(new RowSelectionModel());
+
 		this._register(this._input);
 		this._register(attachInputBoxStyler(this._input, this.themeService));
-		this._register(this._tree);
-		this._register(attachListStyler(this._tree, this.themeService));
+		// this._register(this._tree);
+		this._register(this._table);
+		this._register(attachTableStyler(this._table, this.themeService));
 	}
 
 	private init(): void {
@@ -101,8 +104,22 @@ export class ExplorerWidget extends DashboardWidget implements IDashboardWidget,
 					if (data) {
 						const objectData = ObjectMetadataWrapper.createFromObjectMetadata(data.objectMetadata);
 						objectData.sort(ObjectMetadataWrapper.sort);
-						this._treeDataSource.data = objectData;
-						this._tree.setInput(new ExplorerModel());
+						const columns = ['name', 'type'];
+						this._table.columns = columns.map(column => {
+							return <Slick.Column<Slick.SlickData>>{
+								id: column,
+								field: column,
+								name: column,
+								sortable: true
+							};
+						});
+						this._table.setData(objectData.map(obj => {
+							return {
+								name: obj.name,
+								type: obj.metadataTypeName
+							};
+						}));
+						this._table.updateRowCount();
 					}
 				},
 				error => {
@@ -120,8 +137,17 @@ export class ExplorerWidget extends DashboardWidget implements IDashboardWidget,
 						profile.databaseName = d;
 						return profile;
 					});
-					this._treeDataSource.data = profileData;
-					this._tree.setInput(new ExplorerModel());
+					const columns = ['databaseName'];
+					this._table.columns = columns.map(column => {
+						return <Slick.Column<Slick.SlickData>>{
+							id: column,
+							field: column,
+							name: column,
+							sortable: true
+						};
+					});
+					this._table.setData(profileData);
+					this._table.updateRowCount();
 				},
 				error => {
 					(<HTMLElement>this._el.nativeElement).innerText = nls.localize('dashboard.explorer.databaseError', "Unable to load databases");
@@ -136,7 +162,9 @@ export class ExplorerWidget extends DashboardWidget implements IDashboardWidget,
 
 	public layout(): void {
 		if (this._inited) {
-			this._tree.layout(getContentHeight(this._tableContainer.nativeElement));
+			this._table.layout(new Dimension(
+				getContentWidth(this._tableContainer.nativeElement),
+				getContentHeight(this._tableContainer.nativeElement)));
 		}
 	}
 }
