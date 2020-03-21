@@ -3,6 +3,7 @@
 	"compilerOptions": {
 		"outDir": "./out",
 		"experimentalDecorators": true,
+		"noUnusedParameters": false,
 		"typeRoots": [
 			"./node_modules/@types"
 		]
