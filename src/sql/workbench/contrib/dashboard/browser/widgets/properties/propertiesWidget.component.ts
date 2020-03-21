@@ -78,13 +78,12 @@ export class PropertiesWidgetComponent extends DashboardWidget implements IDashb
 		@Inject(ILogService) private logService: ILogService
 	) {
 		super();
-		this.init();
 	}
 
 	ngOnInit() {
+		this.init();
 		this._hasInit = true;
 		this._register(addDisposableListener(window, EventType.RESIZE, () => this.handleClipping()));
-		this._changeRef.detectChanges();
 	}
 
 	public refresh(): void {
