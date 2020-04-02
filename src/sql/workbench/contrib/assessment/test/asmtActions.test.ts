@@ -30,7 +30,7 @@ suite('Assessment Actions', () => {
 	setup(() => {
 		mockAsmtViewComponent = TypeMoq.Mock.ofType<TestAssessmentView>(TestAssessmentView);
 		mockAssessmentService = TypeMoq.Mock.ofType<AssessmentService>(AssessmentService);
-		mockAssessmentService.setup(s => s.assessmentInvoke(TypeMoq.It.isAny()))
+		mockAssessmentService.setup(s => s.assessmentInvoke(TypeMoq.It.isAny(), TypeMoq.It.isAnyNumber()))
 			.returns(() => {
 				let items: azdata.AssessmentResultItem[] = [
 					<azdata.AssessmentResultItem>{ checkId: 'AutoCreateStats', targetType: 1, targetName: 'dbName', level: 'WARN', tags: ['DefaultRuleset', 'Performance', 'Statistics', 'QueryOptimizer'], displayName: 'Auto-Create Statistics should be on', description: 'The Query Optimizer determines whether an index is useful for a specific query by evaluating the stored statistics. If the statistics become out of date and significant changes have occurred against the underlying data, this can result in less than optimal query performance. In most cases, it\'s best to let SQL Server maintain the statistics. If you turn \'Auto Create Stats\' and \'Auto Update Stats\' off, then it is up to you to keep the statistics up-to-date somehow. Failure to do so will lead to poor query performance. Most applications should have these options ON. When the Auto Create statistics setting is ON, the Query Optimizer creates statistics on one or more columns of a table or an indexed view, as necessary, to improve query plans and query performance.', message: 'Turn Auto-Create Statistics option on to improve query performance.', helpLink: 'https://docs.microsoft.com/sql/relational-databases/statistics/statistics#CreateStatistics' },

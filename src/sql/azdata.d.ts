@@ -1633,11 +1633,6 @@ declare module 'azdata' {
 	export interface AgentJobsResult extends ResultStatus {
 		jobs: AgentJobInfo[];
 	}
-	export interface AssessmentResult extends ResultStatus {
-		results: AssessmentResultItem[],
-		rulesetVersion: string,
-		apiVersion: string
-	}
 
 	export interface AgentJobHistoryResult extends ResultStatus {
 		histories: AgentJobHistoryInfo[];
@@ -1820,8 +1815,15 @@ declare module 'azdata' {
 
 	}
 
+	export interface AssessmentResult extends ResultStatus {
+		results: AssessmentResultItem[],
+		rulesetVersion: string,
+		apiVersion: string
+	}
+
 	export interface AssessmentServicesProvider extends DataProvider {
-		assessmentInvoke(ownerUri: string): Thenable<AssessmentResult>;
+		assessmentInvoke(ownerUri: string, targetType: number): Thenable<AssessmentResult>;
+		getAssessmentItems(ownerUri: string, targetType: number): Thenable<AssessmentResult>;
 	}
 
 	// DacFx interfaces  -----------------------------------------------------------------------

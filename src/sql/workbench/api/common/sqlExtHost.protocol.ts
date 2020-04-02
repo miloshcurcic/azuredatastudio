@@ -493,7 +493,16 @@ export abstract class ExtHostDataProtocolShape {
 	/**
 	 * SQL Assessment Section
 	 */
-	$assessmentInvoke(handle: number, connectionUri: string): Thenable<azdata.AssessmentResult> { throw ni(); }
+
+	/**
+	* Perform an assessment
+	*/
+	$assessmentInvoke(handle: number, connectionUri: string, targetType: number): Thenable<azdata.AssessmentResult> { throw ni(); }
+
+	/**
+	 * Get applicable assessment rules
+	 */
+	$getAssessmentItems(handle: number, connectionUri: string, targetType: number): Thenable<azdata.AssessmentResult> { throw ni(); }
 }
 
 /**

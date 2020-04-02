@@ -17,8 +17,7 @@ export interface IAssessmentService {
 
 	registerProvider(providerId: string, provider: azdata.AssessmentServicesProvider): void;
 	fireOnDidChange(): void;
-	// getAssessmentDatabaseResults(connection: ConnectionProfile): Thenable<azdata.AssessmentResult>;
-	// getAssessmentServerResults(connection: ConnectionProfile): Thenable<azdata.AssessmentResult>;
-	// getAssessmentTotalResults(connection: ConnectionProfile): Thenable<azdata.AssessmentResult>;
-	assessmentInvoke(connectionUri: string): Thenable<azdata.AssessmentResult>;
+
+	getAssessmentItems(connectionUri: string, targetType: number): Thenable<azdata.AssessmentResult>;
+	assessmentInvoke(connectionUri: string, targetType: number): Thenable<azdata.AssessmentResult>;
 }

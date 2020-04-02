@@ -843,7 +843,12 @@ export class ExtHostDataProtocol extends ExtHostDataProtocolShape {
 	}
 
 	// Assessment methods
-	public $assessmentInvoke(handle: number, ownerUri: string): Thenable<azdata.AssessmentResult> {
-		return this._resolveProvider<azdata.AssessmentServicesProvider>(handle).assessmentInvoke(ownerUri);
+	public $assessmentInvoke(handle: number, ownerUri: string, targetType: number): Thenable<azdata.AssessmentResult> {
+		return this._resolveProvider<azdata.AssessmentServicesProvider>(handle).assessmentInvoke(ownerUri, targetType);
 	}
+
+	public $getAssessmentItems(handle: number, ownerUri: string, targetType: number): Thenable<azdata.AssessmentResult> {
+		return this._resolveProvider<azdata.AssessmentServicesProvider>(handle).getAssessmentItems(ownerUri, targetType);
+	}
+
 }

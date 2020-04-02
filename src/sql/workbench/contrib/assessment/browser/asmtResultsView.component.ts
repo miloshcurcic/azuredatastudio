@@ -6,6 +6,7 @@
 import 'vs/css!./media/asmt';
 import 'vs/css!./media/detailview';
 
+import * as nls from 'vs/nls';
 import * as azdata from 'azdata';
 import * as dom from 'vs/base/browser/dom';
 import { Component, Inject, forwardRef, ElementRef, ChangeDetectorRef, ViewChild, OnInit, OnDestroy, AfterContentChecked } from '@angular/core';
@@ -15,8 +16,6 @@ import { AsmtViewComponent } from 'sql/workbench/contrib/assessment/browser/asmt
 import { HeaderFilter } from 'sql/base/browser/ui/table/plugins/headerFilter.plugin';
 import { IAssessmentService } from 'sql/workbench/services/assessment/common/interfaces';
 import { CommonServiceInterface } from 'sql/workbench/services/bootstrap/browser/commonServiceInterface.service';
-import { IContextMenuService } from 'vs/platform/contextview/browser/contextView';
-import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IDashboardService } from 'sql/platform/dashboard/browser/dashboardService';
 import { IWorkbenchThemeService } from 'vs/workbench/services/themes/common/workbenchThemeService';
@@ -27,15 +26,14 @@ import { IAsmtActionInfo, AsmtServerSelectItemsAction, AsmtServerInvokeItemsActi
 import { Taskbar } from 'sql/base/browser/ui/taskbar/taskbar';
 import { openNewQuery } from 'sql/workbench/contrib/query/browser/queryActions';
 import { IAction } from 'vs/base/common/actions';
-import { IObjectExplorerService } from 'sql/workbench/services/objectExplorer/browser/objectExplorerService';
 import * as Utils from 'sql/platform/connection/common/utils';
 
 export const ASMTRESULTSVIEW_SELECTOR: string = 'asmt-results-view-component';
 export const ROW_HEIGHT: number = 25;
 export const ACTIONBAR_PADDING: number = 10;
 
-const PLACEHOLDER_LABEL = 'Nothing to show. Invoke assessment to get results';
-const PLACEHOLDER_NO_RESULTS_LABEL = '<OBJECT_TYPE> <OBJECT_NAME> is totally compliant with the best practices. Good job!';
+const PLACEHOLDER_LABEL = nls.localize('asmt.NoResultsInitial', "Nothing to show. Invoke assessment to get results");
+const PLACEHOLDER_NO_RESULTS_LABEL = nls.localize('asmt.TargetComplient', "is totally compliant with the best practices. Good job!");
 
 interface IItem extends Slick.SlickData {
 	jobId?: string;
@@ -56,35 +54,34 @@ export class AsmtResultsViewComponent extends TabChild implements OnInit, OnDest
 	protected isInitialized: boolean = false;
 	protected isRefreshing: boolean = false;
 	protected _showProgressWheel: boolean;
-	public contextAction: any;
-	private dataView: any;
-	private filterPlugin: any;
 	protected _actionBar: Taskbar;
-	private isServerMode: boolean;
+
 	private columns: Array<Slick.Column<any>> = [
-		{ name: 'Severity', field: 'severity', maxWidth: 80, id: 'severity' },
+		{ name: nls.localize('asmt.column.severity', "Serverity"), field: 'severity', maxWidth: 80, id: 'severity' },
 		{
-			name: 'Message',
+			name: nls.localize('asmt.column.message', "Message"),
 			field: 'message',
 			width: 300,
 			id: 'message',
 			formatter: (row, cell, value, columnDef, dataContext) => this.renderMessage(row, cell, value, columnDef, dataContext),
 		},
-		{ name: 'Tags', field: 'tags', width: 80, id: 'tags' },
-		{ name: 'Check ID', field: 'checkId', maxWidth: 140, id: 'checkId' },
+		{ name: nls.localize('asmt.column.tags', "Tags"), field: 'tags', width: 80, id: 'tags' },
+		{ name: nls.localize('asmt.column.checkId', "Check ID"), field: 'checkId', maxWidth: 140, id: 'checkId' },
 		{
-			name: 'Target',
+			name: nls.localize('asmt.column.target', "Target"),
 			formatter: (row, cell, value, columnDef, dataContext) => this.renderTarget(row, cell, value, columnDef, dataContext),
 			field: 'targetName',
 			width: 80,
 			id: 'target'
 		}
 	];
+	private dataView: any;
+	private filterPlugin: any;
+	private isServerMode: boolean;
 	private rowDetail: RowDetailView<IItem>;
 	private exportActionItem: IAction;
 	private gridPlaceholder: JQuery<HTMLElement>;
-	private serverName: string;
-	private databaseName: string;
+	private placeholderNoResultsLabel: string;
 
 	@ViewChild('resultsgrid') _gridEl: ElementRef;
 	@ViewChild('actionbarContainer') protected actionBarContainer: ElementRef;
@@ -96,11 +93,7 @@ export class AsmtResultsViewComponent extends TabChild implements OnInit, OnDest
 		@Inject(IAssessmentService) private _assessmentService: IAssessmentService,
 		@Inject(IWorkbenchThemeService) private _themeService: IWorkbenchThemeService,
 		@Inject(IInstantiationService) private _instantiationService: IInstantiationService,
-		@Inject(IContextMenuService) _contextMenuService: IContextMenuService,
-		@Inject(IKeybindingService) _keybindingService: IKeybindingService,
 		@Inject(IDashboardService) _dashboardService: IDashboardService,
-		@Inject(IObjectExplorerService) _objectExporerService: IObjectExplorerService
-
 		//,@Inject(ITelemetryService) private _telemetryService: ITelemetryService
 	) {
 		super();
@@ -108,8 +101,12 @@ export class AsmtResultsViewComponent extends TabChild implements OnInit, OnDest
 		let profile = this._commonService.connectionManagementService.connectionInfo.connectionProfile;
 
 		this.isServerMode = !profile.databaseName || Utils.isMaster(profile);
-		this.serverName = profile.serverName;
-		this.databaseName = profile.databaseName;
+
+		if (this.isServerMode) {
+			this.placeholderNoResultsLabel = nls.localize('instance', "Instance") + ' ' + profile.serverName + ' ' + PLACEHOLDER_NO_RESULTS_LABEL;
+		} else {
+			this.placeholderNoResultsLabel = nls.localize('database', "Database") + ' ' + profile.databaseName + ' ' + PLACEHOLDER_NO_RESULTS_LABEL;
+		}
 
 		_dashboardService.onLayout((d) => {
 			self.layout();
@@ -120,24 +117,20 @@ export class AsmtResultsViewComponent extends TabChild implements OnInit, OnDest
 		this._visibilityElement = this._gridEl;
 		this._parentComponent = this._asmtViewComponent;
 		//this._telemetryService.publicLog(TelemetryKeys.AsmtView);
-
 	}
+
+	ngOnDestroy(): void {
+	}
+
 	ngAfterContentChecked(): void {
 		if (this._visibilityElement && this._parentComponent) {
 			if (this.isVisible === false && this._visibilityElement.nativeElement.offsetParent !== null) {
 				this.isVisible = true;
 				if (!this.isInitialized) {
-					//this._showProgressWheel = true;
 					this.onFirstVisible();
 					this.layout();
 					this.isInitialized = true;
 				}
-			} else if (this.isVisible === true && this._parentComponent.refresh === true) {
-				//this._showProgressWheel = true;
-				this.isRefreshing = true;
-				this.onFirstVisible();
-				this.layout();
-				this._parentComponent.refresh = false;
 			} else if (this.isVisible === true && this._visibilityElement.nativeElement.offsetParent === null) {
 				this.isVisible = false;
 			}
@@ -156,13 +149,49 @@ export class AsmtResultsViewComponent extends TabChild implements OnInit, OnDest
 				statusTop - toolbarBottom));
 
 			let gridCanvasWidth = this._table.grid.getCanvasNode().clientWidth;
-			this.gridPlaceholder.css('left', ((gridCanvasWidth - this.gridPlaceholder.width()) / 2).toString() + 'px');
+			this.gridPlaceholder.css('left', `${((gridCanvasWidth - this.gridPlaceholder.width()) / 2).toString()}px`);
 
 		}
 	}
 
-	ngOnDestroy(): void {
+	public async getAssessmentItems(ownerUri: string, targetType: number) {
+		this._showProgressWheel = true;
+		if (this.isVisible) {
+			this._cd.detectChanges();
+		}
+
+		this.displayAssessmentResults(await this._assessmentService.getAssessmentItems(ownerUri, targetType));
 	}
+
+	public async invokeAssessment(ownerUri: string, targetType: number) {
+		this._showProgressWheel = true;
+		if (this.isVisible) {
+			this._cd.detectChanges();
+		}
+
+		this.displayAssessmentResults(await this._assessmentService.assessmentInvoke(ownerUri, targetType));
+	}
+
+	public async exportAsScript() {
+		let connection = this._commonService.connectionManagementService.connectionInfo.connectionProfile;
+
+		let queryString = `CREATE TABLE [dbo].[AssessmentResult](
+			[CheckName] [nvarchar](max) NOT NULL,
+			[CheckId] [nvarchar](max) NOT NULL,
+			[RulesetName] [nvarchar](max) NOT NULL,
+			[RulesetVersion] [nvarchar](max) NOT NULL,
+			[Severity] [nvarchar](max) NOT NULL,
+			[Message] [nvarchar](max) NOT NULL,
+			[TargetPath] [nvarchar](max) NOT NULL,
+			[TargetType] [nvarchar](max) NOT NULL,
+			[HelpLink] [nvarchar](max) NOT NULL,
+			[Timestamp] [datetimeoffset](7) NOT NULL
+		) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+		GO`;
+
+		this._instantiationService.invokeFunction(openNewQuery, connection, queryString);
+	}
+
 
 	protected initActionBar() {
 		let serverSelectItems = this._instantiationService.createInstance(AsmtServerSelectItemsAction);
@@ -175,6 +204,7 @@ export class AsmtResultsViewComponent extends TabChild implements OnInit, OnDest
 		let connectionInfo = this._commonService.connectionManagementService.connectionInfo;
 
 		this._actionBar = new Taskbar(taskbar);
+
 		if (this.isServerMode) {
 			this._actionBar.setContent([
 				{ action: serverSelectItems },
@@ -187,18 +217,30 @@ export class AsmtResultsViewComponent extends TabChild implements OnInit, OnDest
 				{ action: databaseInvokeAsmt },
 				{ action: this.exportActionItem }
 			]);
-			databaseSelectAsmt.label = connectionInfo.connectionProfile.databaseName + ' ' + AsmtDatabaseSelectItemsAction.LABEL;
-			databaseInvokeAsmt.label = AsmtDatabaseInvokeItemsAction.LABEL + ' for ' + connectionInfo.connectionProfile.databaseName;
+			databaseSelectAsmt.label = AsmtDatabaseSelectItemsAction.LABEL + ' ' + nls.localize('for', "for") + ' ' + connectionInfo.connectionProfile.databaseName;
+			databaseInvokeAsmt.label = AsmtDatabaseInvokeItemsAction.LABEL + ' ' + nls.localize('for', "for") + ' ' + connectionInfo.connectionProfile.databaseName;
 		}
 
 		let context: IAsmtActionInfo = { component: this, ownerUri: connectionInfo.ownerUri };
 		this._actionBar.context = context;
 		this.exportActionItem.enabled = false;
+	}
 
+	private displayAssessmentResults(assessmentResult: azdata.AssessmentResult) {
+		this._showProgressWheel = false;
+		if (assessmentResult) {
+			this.onResultsAvailable(assessmentResult.results);
+			this._asmtViewComponent.displayAssessmentInfo(assessmentResult.apiVersion, assessmentResult.rulesetVersion);
+		}
+
+		if (this.isVisible) {
+			this._cd.detectChanges();
+		}
+
+		this._table.grid.invalidate();
 	}
 
 	private onFirstVisible() {
-
 		let columns = this.columns.map((column) => {
 			column.rerenderOnResize = true;
 			return column;
@@ -226,6 +268,7 @@ export class AsmtResultsViewComponent extends TabChild implements OnInit, OnDest
 			preTemplate: () => '',
 			loadOnce: true
 		});
+
 		this.rowDetail = rowDetail;
 		let columnDef = this.rowDetail.getColumnDefinition();
 		columnDef.formatter = (row, cell, value, columnDef, dataContext) => this.detailSelectionFormatter(row, cell, value, columnDef, dataContext as ExtendedItem<IItem>);
@@ -235,6 +278,7 @@ export class AsmtResultsViewComponent extends TabChild implements OnInit, OnDest
 
 		this._register(attachButtonStyler(filterPlugin, this._themeService));
 		this.filterPlugin = filterPlugin;
+		// we need to be able to show distinct array values in filter dialog for columns with array data
 		filterPlugin['getFilterValues'] = this.getFilterValues;
 		filterPlugin['getAllFilterValues'] = this.getAllFilterValues;
 		filterPlugin['getFilterValuesByInput'] = this.getFilterValuesByInput;
@@ -242,10 +286,148 @@ export class AsmtResultsViewComponent extends TabChild implements OnInit, OnDest
 		jQuery(this._gridEl.nativeElement).empty();
 		jQuery(this.actionBarContainer.nativeElement).empty();
 		this.initActionBar();
+
 		this._table = new Table(this._gridEl.nativeElement, { columns }, options);
 		this._table.grid.setData(this.dataView, true);
 		this.gridPlaceholder = jQuery(this._table.grid.getCanvasNode()).html('<span class=\'placeholder\'></span>').find('.placeholder');
 		this.gridPlaceholder.text(PLACEHOLDER_LABEL);
+	}
+
+	private onResultsAvailable(results: azdata.AssessmentResultItem[]) {
+		let resultViews: any;
+		let self = this;
+		resultViews = results.map((asmtResult, ind, array) => {
+			return {
+				id: ind,
+				severity: asmtResult.level,
+				message: asmtResult.message,
+				tags: self.clearOutDefaultRuleset(asmtResult.tags),
+				checkId: asmtResult.checkId,
+				targetName: asmtResult.targetName,
+				targetType: asmtResult.targetType,
+				helpLink: asmtResult.helpLink
+			};
+		});
+
+		this.filterPlugin.onFilterApplied.subscribe((e, args) => {
+			let filterValues = args.column.filterValues;
+			if (filterValues) {
+				this.dataView.refresh();
+				this._table.grid.resetActiveCell();
+			}
+		});
+
+		this.filterPlugin.onCommand.subscribe((e, args: any) => {
+			this.columnSort(args.column.name, args.command === 'sort-asc');
+		});
+		this._table.registerPlugin(this.filterPlugin);
+		this._table.registerPlugin(<any>this.rowDetail);
+
+		this.dataView.beginUpdate();
+		this.dataView.setItems(resultViews);
+		this.dataView.setFilter((item) => this.filter(item));
+		this.dataView.endUpdate();
+		this.dataView.refresh();
+
+		this._table.autosizeColumns();
+		this._table.resizeCanvas();
+
+		// tooltip for tags
+		jQuery('.slick-cell').hover(e => {
+			let currentTarget = e.currentTarget;
+			currentTarget.title = currentTarget.innerText;
+		});
+
+		this.exportActionItem.enabled = true;
+		if (results.length > 0) {
+			this.gridPlaceholder.hide();
+		} else {
+			this.gridPlaceholder.text(this.placeholderNoResultsLabel);
+		}
+	}
+
+	private clearOutDefaultRuleset(tags: string[]): string[] {
+		let idx = tags.indexOf('DefaultRuleset');
+		if (idx > -1) {
+			tags.splice(idx, 1);
+		}
+		return tags;
+	}
+
+	private columnSort(column: string, isAscending: boolean) {
+		let items = this.dataView.getItems();
+		// get error items here and remove them
+		let jobItems = items.filter(x => x._parent === undefined);
+		this.dataView.setItems(jobItems);
+		this.dataView.sort((item1, item2) => {
+			return item1.checkId.localeCompare(item2.checkId);
+		}, isAscending);
+
+	}
+
+	private filter(item: any) {
+		let columns = this._table.grid.getColumns();
+		let value = true;
+		for (let i = 0; i < columns.length; i++) {
+			let col: any = columns[i];
+			let filterValues = col.filterValues;
+			if (filterValues && filterValues.length > 0) {
+				if (item._parent) {
+					value = value && find(filterValues, x => x === item._parent[col.field]);
+				} else {
+					let colValue = item[col.field];
+					if (colValue instanceof Array) {
+						value = value && find(filterValues, x => colValue.indexOf(x) >= 0);
+					} else {
+						value = value && find(filterValues, x => x === colValue);
+					}
+
+				}
+			}
+		}
+		return value;
+	}
+
+	private renderMessage(_row, _cell, _value, _columnDef, dataContext) {
+		return dataContext.message + '<a class=\'helpLink\' href=\'' + dataContext.helpLink + '\'>' + nls.localize('asmt.learnMore', "Learn More") + '</a>';
+	}
+
+	private renderTarget(_row, _cell, _value, _columnDef, dataContext) {
+		let targetClass = 'defaultDatabaseIcon';
+		if (dataContext.targetType === 1) {
+			targetClass = 'defaultServerIcon';
+		}
+		return '<div class=\'carbon-taskbar\'><span class=\'action-label codicon ' + targetClass + '\'>' + dataContext.targetName + '</span></div>';
+	}
+
+	private detailSelectionFormatter(_row: number, _cell: number, _value: any, _columnDef: Slick.Column<IItem>, dataContext: IItem): string | undefined {
+
+		if (dataContext._collapsed === undefined) {
+			dataContext._collapsed = true;
+			dataContext._sizePadding = 0;	//the required number of pading rows
+			dataContext._height = 0;	//the actual height in pixels of the detail field
+			dataContext._isPadding = false;
+			dataContext._parent = undefined;
+		}
+
+		if (dataContext._isPadding === true) {
+			//render nothing
+		} else if (dataContext._collapsed) {
+			return '<div class=\'detailView-toggle expand\'></div>';
+		} else {
+			const html: Array<string> = [];
+			const rowHeight = ROW_HEIGHT;
+			const bottomMargin = 5;
+			html.push('<div class="detailView-toggle collapse"></div></div>');
+
+			html.push(`<div id='cellDetailView_${dataContext.id}' class='dynamic-cell-detail' `);   //apply custom css to detail
+			html.push(`style=\'height:${dataContext._height}px;`); //set total height of padding
+			html.push(`top:${rowHeight}px'>`);             //shift detail below 1st row
+			html.push(`<div id='detailViewContainer_${dataContext.id}"'  class='detail-container' style='max-height:${(dataContext._height! - rowHeight + bottomMargin)}px'>`); //sub ctr for custom styling
+			html.push(`<div id='innerDetailView_${dataContext.id}'>${dataContext._detailContent!}</div></div>`);
+			return html.join('');
+		}
+		return undefined;
 	}
 
 	private getFilterValues(dataView: Slick.DataProvider<Slick.SlickData>, column: Slick.Column<any>): Array<any> {
@@ -334,203 +516,4 @@ export class AsmtResultsViewComponent extends TabChild implements OnInit, OnDest
 
 		return seen.sort((v) => { return v; });
 	}
-
-	private clearOutDefaultRuleset(tags: string[]): string[] {
-		let idx = tags.indexOf('DefaultRuleset');
-		if (idx > -1) {
-			tags.splice(idx, 1);
-		}
-		return tags;
-	}
-
-	private onResultsAvailable(results: azdata.AssessmentResultItem[], isServer: boolean) {
-		let resultViews: any;
-		let self = this;
-		resultViews = results.map((asmtResult, ind, array) => {
-			return {
-				id: ind,
-				severity: asmtResult.level,
-				message: asmtResult.message,
-				tags: self.clearOutDefaultRuleset(asmtResult.tags),
-				checkId: asmtResult.checkId,
-				targetName: asmtResult.targetName,
-				targetType: asmtResult.targetType,
-				helpLink: asmtResult.helpLink
-			};
-		});
-
-		this.filterPlugin.onFilterApplied.subscribe((e, args) => {
-			let filterValues = args.column.filterValues;
-			if (filterValues) {
-				this.dataView.refresh();
-				this._table.grid.resetActiveCell();
-			}
-		});
-
-		this.filterPlugin.onCommand.subscribe((e, args: any) => {
-			this.columnSort(args.column.name, args.command === 'sort-asc');
-		});
-		this._table.registerPlugin(this.filterPlugin);
-		this._table.registerPlugin(<any>this.rowDetail);
-
-
-
-		this.dataView.beginUpdate();
-		this.dataView.setItems(resultViews);
-		this.dataView.setFilter((item) => this.filter(item));
-		this.dataView.endUpdate();
-		this.dataView.refresh();
-
-		this._table.autosizeColumns();
-		this._table.resizeCanvas();
-
-		// tooltip for tags
-		jQuery('.slick-cell').hover(e => {
-			let currentTarget = e.currentTarget;
-			currentTarget.title = currentTarget.innerText;
-		});
-
-		this.exportActionItem.enabled = true;
-		if (results.length > 0) {
-			this.gridPlaceholder.hide();
-		} else {
-			let objectType = isServer ? 'Server' : 'Database';
-			let objectName = isServer ? this.serverName : this.databaseName;
-			this.gridPlaceholder.text(PLACEHOLDER_NO_RESULTS_LABEL.replace('<OBJECT_TYPE>', objectType).replace('<OBJECT_NAME>', objectName));
-		}
-	}
-
-	private columnSort(column: string, isAscending: boolean) {
-		let items = this.dataView.getItems();
-		// get error items here and remove them
-		let jobItems = items.filter(x => x._parent === undefined);
-		this.dataView.setItems(jobItems);
-		this.dataView.sort((item1, item2) => {
-			return item1.checkId.localeCompare(item2.checkId);
-		}, isAscending);
-
-	}
-
-	private filter(item: any) {
-		let columns = this._table.grid.getColumns();
-		let value = true;
-		for (let i = 0; i < columns.length; i++) {
-			let col: any = columns[i];
-			let filterValues = col.filterValues;
-			if (filterValues && filterValues.length > 0) {
-				if (item._parent) {
-					value = value && find(filterValues, x => x === item._parent[col.field]);
-				} else {
-					let colValue = item[col.field];
-					if (colValue instanceof Array) {
-						value = value && find(filterValues, x => colValue.indexOf(x) >= 0);
-					} else {
-						value = value && find(filterValues, x => x === colValue);
-					}
-
-				}
-			}
-		}
-		return value;
-	}
-
-	private renderMessage(_row, _cell, _value, _columnDef, dataContext) {
-		return dataContext.message + '<a class=\'helpLink\' href=\'' + dataContext.helpLink + '\'>Learn More</a>';
-	}
-
-	private renderTarget(_row, _cell, _value, _columnDef, dataContext) {
-		let targetClass = 'defaultDatabaseIcon';
-		if (dataContext.targetType === 1) {
-			targetClass = 'defaultServerIcon';
-		}
-		return '<div class=\'carbon-taskbar\'><span class=\'action-label codicon ' + targetClass + '\'>' + dataContext.targetName + '</span></div>';
-	}
-
-	public detailSelectionFormatter(_row: number, _cell: number, _value: any, _columnDef: Slick.Column<IItem>, dataContext: IItem): string | undefined {
-
-		if (dataContext._collapsed === undefined) {
-			dataContext._collapsed = true;
-			dataContext._sizePadding = 0;	//the required number of pading rows
-			dataContext._height = 0;	//the actual height in pixels of the detail field
-			dataContext._isPadding = false;
-			dataContext._parent = undefined;
-		}
-
-		if (dataContext._isPadding === true) {
-			//render nothing
-		} else if (dataContext._collapsed) {
-			return '<div class=\'detailView-toggle expand\'></div>';
-		} else {
-			const html: Array<string> = [];
-			const rowHeight = ROW_HEIGHT;
-			const bottomMargin = 5;
-			html.push('<div class="detailView-toggle collapse"></div></div>');
-
-			html.push(`<div id='cellDetailView_${dataContext.id}' class='dynamic-cell-detail' `);   //apply custom css to detail
-			html.push(`style=\'height:${dataContext._height}px;`); //set total height of padding
-			html.push(`top:${rowHeight}px'>`);             //shift detail below 1st row
-			html.push(`<div id='detailViewContainer_${dataContext.id}"'  class='detail-container' style='max-height:${(dataContext._height! - rowHeight + bottomMargin)}px'>`); //sub ctr for custom styling
-			html.push(`<div id='innerDetailView_${dataContext.id}'>${dataContext._detailContent!}</div></div>`);
-			return html.join('');
-		}
-		return undefined;
-	}
-
-	public getAssessmentServerItems() {
-		this._showProgressWheel = true;
-		if (this.isVisible) {
-			this._cd.detectChanges();
-		}
-	}
-	public getAssessmentDatabaseItems() {
-
-	}
-
-	public async invokeAssessmentServerItems(ownerUri: string) {
-
-		this._showProgressWheel = true;
-		if (this.isVisible) {
-			this._cd.detectChanges();
-		}
-
-		this.displayAssessmentResults(await this._assessmentService.assessmentInvoke(ownerUri), true);
-	}
-
-	public invokeAssessmentDatabaseItems() {
-
-	}
-
-	public async exportAsScript() {
-		let connection = this._commonService.connectionManagementService.connectionInfo.connectionProfile;
-		let queryString = `CREATE TABLE [dbo].[AssessmentResult](
-			[CheckName] [nvarchar](max) NOT NULL,
-			[CheckId] [nvarchar](max) NOT NULL,
-			[RulesetName] [nvarchar](max) NOT NULL,
-			[RulesetVersion] [nvarchar](max) NOT NULL,
-			[Severity] [nvarchar](max) NOT NULL,
-			[Message] [nvarchar](max) NOT NULL,
-			[TargetPath] [nvarchar](max) NOT NULL,
-			[TargetType] [nvarchar](max) NOT NULL,
-			[HelpLink] [nvarchar](max) NOT NULL,
-			[Timestamp] [datetimeoffset](7) NOT NULL
-		) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
-		GO`;
-
-		this._instantiationService.invokeFunction(openNewQuery, connection, queryString);
-	}
-
-	private displayAssessmentResults(assessmentResult: azdata.AssessmentResult, isServer: boolean) {
-		this._showProgressWheel = false;
-		if (assessmentResult) {
-			this.onResultsAvailable(assessmentResult.results, isServer);
-			this._asmtViewComponent.displayAssessmentInfo(assessmentResult.apiVersion, assessmentResult.rulesetVersion);
-		}
-
-		if (this.isVisible) {
-			this._cd.detectChanges();
-		}
-
-		this._table.grid.invalidate();
-	}
-
 }

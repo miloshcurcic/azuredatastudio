@@ -15,7 +15,7 @@ export class IAsmtActionInfo {
 
 export class AsmtServerSelectItemsAction extends Action {
 	public static ID = 'asmtaction.server.getitems';
-	public static LABEL = 'View applicable rules';
+	public static LABEL = nls.localize(AsmtServerSelectItemsAction.ID, "View applicable rules");
 
 	constructor(
 	) {
@@ -26,7 +26,7 @@ export class AsmtServerSelectItemsAction extends Action {
 		return new Promise<boolean>((resolve, reject) => {
 			if (context) {
 				if (context.component) {
-					context.component.getAssessmentServerItems();
+					context.component.getAssessmentItems(context.ownerUri, 1);
 				}
 				resolve(true);
 			} else {
@@ -38,18 +38,18 @@ export class AsmtServerSelectItemsAction extends Action {
 
 export class AsmtDatabaseSelectItemsAction extends Action {
 	public static ID = 'asmtaction.database.getitems';
-	public static LABEL = 'applicable rules';
+	public static LABEL = nls.localize(AsmtDatabaseSelectItemsAction.ID, "View applicable rules");
 
 	constructor(
 	) {
-		super(AsmtServerSelectItemsAction.ID, AsmtServerSelectItemsAction.LABEL, 'defaultDatabaseIcon');
+		super(AsmtDatabaseSelectItemsAction.ID, AsmtDatabaseSelectItemsAction.LABEL, 'defaultDatabaseIcon');
 	}
 
 	public run(context: IAsmtActionInfo): Promise<boolean> {
 		return new Promise<boolean>((resolve, reject) => {
 			if (context) {
 				if (context.component) {
-					context.component.getAssessmentDatabaseItems();
+					context.component.getAssessmentItems(context.ownerUri, 2);
 				}
 				resolve(true);
 			} else {
@@ -73,7 +73,7 @@ export class AsmtServerInvokeItemsAction extends Action {
 		return new Promise<boolean>((resolve, reject) => {
 			if (context) {
 				if (context.component) {
-					context.component.invokeAssessmentServerItems(context.ownerUri);
+					context.component.invokeAssessment(context.ownerUri, 1);
 				}
 				resolve(true);
 			} else {
@@ -85,18 +85,18 @@ export class AsmtServerInvokeItemsAction extends Action {
 
 export class AsmtDatabaseInvokeItemsAction extends Action {
 	public static ID = 'asmtaction.database.invokeitems';
-	public static LABEL = 'Invoke Assessment';
+	public static LABEL = nls.localize(AsmtDatabaseInvokeItemsAction.ID, "Invoke Assessment");
 
 	constructor(
 	) {
-		super(AsmtServerInvokeItemsAction.ID, AsmtServerInvokeItemsAction.LABEL, 'defaultDatabaseIcon');
+		super(AsmtDatabaseInvokeItemsAction.ID, AsmtDatabaseInvokeItemsAction.LABEL, 'defaultDatabaseIcon');
 	}
 
 	public run(context: IAsmtActionInfo): Promise<boolean> {
 		return new Promise<boolean>((resolve, reject) => {
 			if (context) {
 				if (context.component) {
-					context.component.invokeAssessmentDatabaseItems();
+					context.component.invokeAssessment(context.ownerUri, 2);
 				}
 				resolve(true);
 			} else {
@@ -108,7 +108,7 @@ export class AsmtDatabaseInvokeItemsAction extends Action {
 
 export class AsmtExportAsScriptAction extends Action {
 	public static ID = 'asmtaction.exportasscript';
-	public static LABEL = 'Export As Script';
+	public static LABEL = nls.localize(AsmtExportAsScriptAction.ID, "Export As Script");
 
 	constructor(
 	) {

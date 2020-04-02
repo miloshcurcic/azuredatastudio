@@ -453,8 +453,11 @@ export class MainThreadDataProtocol extends Disposable implements MainThreadData
 		const self = this;
 		this._assessmentService.registerProvider(providerId, <azdata.AssessmentServicesProvider>{
 			providerId: providerId,
-			assessmentInvoke(connectionUri: string): Thenable<azdata.AssessmentResult> {
-				return self._proxy.$assessmentInvoke(handle, connectionUri);
+			assessmentInvoke(connectionUri: string, targetType: number): Thenable<azdata.AssessmentResult> {
+				return self._proxy.$assessmentInvoke(handle, connectionUri, targetType);
+			},
+			getAssessmentItems(connectionUri: string, targetType: number): Thenable<azdata.AssessmentResult> {
+				return self._proxy.$getAssessmentItems(handle, connectionUri, targetType);
 			}
 		});
 

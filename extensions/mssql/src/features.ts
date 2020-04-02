@@ -855,15 +855,14 @@ export class SerializationFeature extends SqlOpsFeature<undefined> {
 
 export class AssessmentServicesFeature extends SqlOpsFeature<undefined> {
 	private static readonly messagesTypes: RPCMessageType[] = [
-		contracts.AssessmentInvokeRequest.type
+		contracts.AssessmentInvokeRequest.type,
+		contracts.GetAssessmentItemsRequest.type
 	];
 	constructor(client: SqlOpsDataClient) {
 		super(client, AssessmentServicesFeature.messagesTypes);
 	}
 
 	public fillClientCapabilities(capabilities: ClientCapabilities): void {
-		// this isn't explicitly necessary
-		// ensure(ensure(capabilities, 'connection')!, 'agentServices')!.dynamicRegistration = true;
 	}
 
 	public initialize(capabilities: ServerCapabilities): void {
@@ -876,8 +875,8 @@ export class AssessmentServicesFeature extends SqlOpsFeature<undefined> {
 	protected registerProvider(options: undefined): Disposable {
 		const client = this._client;
 
-		let assessmentInvoke = (ownerUri: string): Thenable<azdata.AssessmentResult> => {
-			let params: contracts.AssessmentInvokeParams = { ownerUri: ownerUri };
+		let assessmentInvoke = (ownerUri: string, targetType: number): Thenable<azdata.AssessmentResult> => {
+			let params: contracts.AssessmentParams = { ownerUri: ownerUri, targetType: targetType };
 			return client.sendRequest(contracts.AssessmentInvokeRequest.type, params).then(
 				r => r,
 				e => {
@@ -887,9 +886,20 @@ export class AssessmentServicesFeature extends SqlOpsFeature<undefined> {
 			);
 		};
 
+		let getAssessmentItems = (ownerUri: string, targetType: number): Thenable<azdata.AssessmentResult> => {
+			let params: contracts.AssessmentParams = { ownerUri: ownerUri, targetType: targetType };
+			return client.sendRequest(contracts.GetAssessmentItemsRequest.type, params).then(
+				r => r,
+				e => {
+					client.logFailedRequest(contracts.GetAssessmentItemsRequest.type, e);
+					return Promise.resolve(undefined);
+				}
+			);
+		};
 		return azdata.dataprotocol.registerAssessmentServicesProvider({
 			providerId: client.providerId,
-			assessmentInvoke
+			assessmentInvoke,
+			getAssessmentItems
 		});
 	}
 

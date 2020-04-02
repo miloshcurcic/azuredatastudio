@@ -676,12 +676,17 @@ export namespace SchemaCompareCancellationRequest {
 
 // ------------------------------- <Assessment> -----------------------------
 
-export interface AssessmentInvokeParams {
+export interface AssessmentParams {
 	ownerUri: string;
+	targetType: number
 }
 
 export namespace AssessmentInvokeRequest {
-	export const type = new RequestType<AssessmentInvokeParams, azdata.AssessmentResult, void, void>('assessment/invoke');
+	export const type = new RequestType<AssessmentParams, azdata.AssessmentResult, void, void>('assessment/invoke');
+}
+
+export namespace GetAssessmentItemsRequest {
+	export const type = new RequestType<AssessmentParams, azdata.AssessmentResult, void, void>('assessment/getAssessmentItems');
 }
 
 // ------------------------------- <Assessment> -----------------------------
