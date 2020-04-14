@@ -33,6 +33,8 @@ import { find } from 'vs/base/common/arrays';
 import { onUnexpectedError } from 'vs/base/common/errors';
 import { ILogService } from 'vs/platform/log/common/log';
 
+const Shell = require.__$__nodeRequire('node-powershell');
+
 export interface IConnectionValidateResult {
 	isValid: boolean;
 	connection: IConnectionProfile;
@@ -40,6 +42,7 @@ export interface IConnectionValidateResult {
 
 export interface IConnectionComponentCallbacks {
 	onSetConnectButton: (enable: boolean) => void;
+	onSetTestButton: (enable: boolean) => void;
 	onCreateNewServerGroup?: () => void;
 	onAdvancedProperties?: () => void;
 	onSetAzureTimeOut?: () => void;
@@ -53,6 +56,7 @@ export interface IConnectionComponentController {
 	validateConnection(): IConnectionValidateResult;
 	fillInConnectionInputs(connectionInfo: IConnectionProfile): void;
 	handleOnConnecting(): void;
+	handleOnTesting(): void;
 	handleResetConnection(): void;
 	focusOnOpen(): void;
 	closeDatabaseDropdown(): void;
@@ -73,6 +77,7 @@ export class ConnectionDialogService implements IConnectionDialogService {
 	private _providerDisplayNames: string[] = [];
 	private _currentProviderType: string = Constants.mssqlProviderName;
 	private _connecting: boolean = false;
+	private _testing: boolean = false;
 	private _connectionErrorTitle = localize('connectionError', "Connection error");
 	private _dialogDeferredPromise: Deferred<IConnectionProfile>;
 
@@ -154,7 +159,7 @@ export class ConnectionDialogService implements IConnectionDialogService {
 	}
 
 	private handleOnConnect(params: INewConnectionParams, profile?: IConnectionProfile): void {
-		if (!this._connecting) {
+		if (!this._connecting && !this._testing) {
 			this._connecting = true;
 			this.handleProviderOnConnecting();
 			if (!profile) {
@@ -190,6 +195,48 @@ export class ConnectionDialogService implements IConnectionDialogService {
 				profile.serverName = trim(profile.serverName);
 				this._connectionManagementService.addSavedPassword(profile).then(async (connectionWithPassword) => {
 					await this.handleDefaultOnConnect(params, connectionWithPassword);
+				}).catch(err => onUnexpectedError(err));
+			}
+		}
+	}
+
+	private handleOnTest(params: INewConnectionParams, profile?: IConnectionProfile): void {
+		if (!this._connecting && !this._testing) {
+			this._testing = true;
+			this.handleProviderOnTesting();
+			if (!profile) {
+				let result = this.uiController.validateConnection();
+				if (!result.isValid) {
+					this._testing = false;
+					this._connectionDialog.resetConnection();
+					return;
+				}
+				profile = result.connection;
+
+				profile.serverName = trim(profile.serverName);
+
+				// append the port to the server name for SQL Server connections
+				if (this._currentProviderType === Constants.mssqlProviderName ||
+					this._currentProviderType === Constants.cmsProviderName) {
+					let portPropertyName: string = 'port';
+					let portOption: string = profile.options[portPropertyName];
+					if (portOption && portOption.indexOf(',') === -1) {
+						profile.serverName = profile.serverName + ',' + portOption;
+					}
+					profile.options[portPropertyName] = undefined;
+					profile.providerName = Constants.mssqlProviderName;
+				}
+
+				// Disable password prompt during reconnect if connected with an empty password
+				if (profile.password === '' && profile.savePassword === false) {
+					profile.savePassword = true;
+				}
+
+				this.handleDefaultOnTest(params, profile).catch(err => onUnexpectedError(err));
+			} else {
+				profile.serverName = trim(profile.serverName);
+				this._connectionManagementService.addSavedPassword(profile).then(async (connectionWithPassword) => {
+					await this.handleDefaultOnTest(params, connectionWithPassword);
 				}).catch(err => onUnexpectedError(err));
 			}
 		}
@@ -267,6 +314,64 @@ export class ConnectionDialogService implements IConnectionDialogService {
 		}
 	}
 
+	private async handleDefaultOnTest(params: INewConnectionParams, connection: IConnectionProfile): Promise<void> {
+		if (this.ignoreNextConnect) {
+			this._connectionDialog.resetConnection();
+			this._connectionDialog.close();
+			this.ignoreNextConnect = false;
+			this._testing = false;
+			this._dialogDeferredPromise.resolve(connection);
+			return;
+		}
+
+		let ps: any;
+
+		try {
+			ps = new Shell({ executionPolicy: 'Bypass', verbose: true });
+
+			ps.addCommand('$parameters = @{\n\
+				Server = \''+connection.serverName+'\'\n\
+				Database = \''+connection.databaseName+'\'  # Set the name of the database you wish to test, \'master\' will be used by default if nothing is set\n\
+				User = \''+connection.userName+'\'  # Set the login username you wish to use, \'AzSQLConnCheckerUser\' will be used by default if nothing is set\n\
+				Password = \''+connection.password+'\'  # Set the login password you wish to use, \'AzSQLConnCheckerPassword\' will be used by default if nothing is set\n\
+				\n\
+				## Optional parameters (default values will be used if omitted)\n\
+				SendAnonymousUsageData = $true  # Set as $true (default) or $false\n\
+				RunAdvancedConnectivityPolicyTests = $true  # Set as $true (default) or $false, this will load the library from Microsoft\'s GitHub repository needed for running advanced connectivity tests\n\
+				CollectNetworkTrace = $true  # Set as $true (default) or $false\n\
+				#EncryptionProtocol = \'\' # Supported values: \'Tls 1.0\', \'Tls 1.1\', \'Tls 1.2\'; Without this parameter operating system will choose the best protocol to use\n\
+			}\n\
+			\n\
+			$ProgressPreference = \'SilentlyContinue\';\n\
+			$scriptUrlBase = \'raw.githubusercontent.com/Azure/SQL-Connectivity-Checker/master\'\n\
+			Invoke-Command -ScriptBlock ([Scriptblock]::Create((iwr ($scriptUrlBase+\'/AzureSQLConnectivityChecker.ps1\')).Content)) -ArgumentList $parameters\n');
+
+			await ps.invoke()
+				.then(out => this.showErrorDialog(Severity.Info, 'Test', out, out));
+			this._connectionDialog.close();
+			this._testing = false;
+			// const connectionResult = await this._connectionManagementService.connectAndSaveProfile(connection, uri, options, params && params.input);
+			// this._connecting = false;
+			// if (connectionResult && connectionResult.connected) {
+			// 	this._connectionDialog.close();
+			// 	if (this._dialogDeferredPromise) {
+			// 		this._dialogDeferredPromise.resolve(connectionResult.connectionProfile);
+			// 	}
+			// } else if (connectionResult && connectionResult.errorHandled) {
+			// 	this._connectionDialog.resetConnection();
+			// } else {
+			// 	this._connectionDialog.resetConnection();
+			// 	this.showErrorDialog(Severity.Error, this._connectionErrorTitle, connectionResult.errorMessage, connectionResult.callStack);
+			// }
+		} catch (err) {
+			this._testing = false;
+			this._connectionDialog.resetConnection();
+			this.showErrorDialog(Severity.Error, this._connectionErrorTitle, err);
+		} finally {
+			ps.dispose();
+		}
+	}
+
 	private get uiController(): IConnectionComponentController {
 		// Find the provider name from the selected provider type, or throw an error if it does not correspond to a known provider
 		let providerName = this._currentProviderType;
@@ -281,13 +386,15 @@ export class ConnectionDialogService implements IConnectionDialogService {
 				this._connectionControllerMap[providerName] =
 					this._instantiationService.createInstance(CmsConnectionController,
 						this._capabilitiesService.getCapabilities(providerName).connection, {
-						onSetConnectButton: (enable: boolean) => this.handleSetConnectButtonEnable(enable)
+						onSetConnectButton: (enable: boolean) => this.handleSetConnectButtonEnable(enable),
+						onSetTestButton: (enable: boolean) => this.handleSetTestButtonEnable(enable)
 					}, providerName);
 			} else {
 				this._connectionControllerMap[providerName] =
 					this._instantiationService.createInstance(ConnectionController,
 						this._capabilitiesService.getCapabilities(providerName).connection, {
-						onSetConnectButton: (enable: boolean) => this.handleSetConnectButtonEnable(enable)
+						onSetConnectButton: (enable: boolean) => this.handleSetConnectButtonEnable(enable),
+						onSetTestButton: (enable: boolean) => this.handleSetTestButtonEnable(enable)
 					}, providerName);
 			}
 		}
@@ -296,6 +403,10 @@ export class ConnectionDialogService implements IConnectionDialogService {
 
 	private handleSetConnectButtonEnable(enable: boolean): void {
 		this._connectionDialog.connectButtonState = enable;
+	}
+
+	private handleSetTestButtonEnable(enable: boolean): void {
+		this._connectionDialog.testButtonState = enable;
 	}
 
 	private handleShowUiComponent(input: OnShowUIResponse) {
@@ -352,6 +463,10 @@ export class ConnectionDialogService implements IConnectionDialogService {
 
 	private handleProviderOnConnecting(): void {
 		this.uiController.handleOnConnecting();
+	}
+
+	private handleProviderOnTesting(): void {
+		this.uiController.handleOnTesting();
 	}
 
 	private updateModelServerCapabilities(model: IConnectionProfile) {
@@ -447,6 +562,9 @@ export class ConnectionDialogService implements IConnectionDialogService {
 			});
 			this._connectionDialog.onConnect((profile) => {
 				this.handleOnConnect(this._connectionDialog.newConnectionParams, profile);
+			});
+			this._connectionDialog.onTest((profile) => {
+				this.handleOnTest(this._connectionDialog.newConnectionParams, profile);
 			});
 			this._connectionDialog.onShowUiComponent((input) => this.handleShowUiComponent(input));
 			this._connectionDialog.onInitDialog(() => this.handleInitDialog());

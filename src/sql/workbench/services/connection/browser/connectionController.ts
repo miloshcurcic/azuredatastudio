@@ -45,6 +45,7 @@ export class ConnectionController implements IConnectionComponentController {
 			(property) => (property.specialValueType !== null && property.specialValueType !== undefined));
 		this._connectionWidget = this._instantiationService.createInstance(ConnectionWidget, specialOptions, {
 			onSetConnectButton: (enable: boolean) => this._callback.onSetConnectButton(enable),
+			onSetTestButton: (enable: boolean) => this._callback.onSetTestButton(enable),
 			onCreateNewServerGroup: () => this.onCreateNewServerGroup(),
 			onAdvancedProperties: () => this.handleOnAdvancedProperties(),
 			onSetAzureTimeOut: () => this.handleonSetAzureTimeOut(),
@@ -189,6 +190,10 @@ export class ConnectionController implements IConnectionComponentController {
 
 	public handleOnConnecting(): void {
 		this._connectionWidget.handleOnConnecting();
+	}
+
+	public handleOnTesting(): void {
+		this._connectionWidget.handleOnTesting();
 	}
 
 	public handleResetConnection(): void {

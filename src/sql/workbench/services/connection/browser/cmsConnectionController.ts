@@ -31,6 +31,7 @@ export class CmsConnectionController extends ConnectionController {
 			(property) => (property.specialValueType !== null && property.specialValueType !== undefined));
 		this._connectionWidget = this._instantiationService.createInstance(CmsConnectionWidget, specialOptions, {
 			onSetConnectButton: (enable: boolean) => this._callback.onSetConnectButton(enable),
+			onSetTestButton: (enable: boolean) => this._callback.onSetTestButton(enable),
 			onCreateNewServerGroup: () => this.onCreateNewServerGroup(),
 			onAdvancedProperties: () => this.handleOnAdvancedProperties(),
 			onSetAzureTimeOut: () => this.handleonSetAzureTimeOut(),

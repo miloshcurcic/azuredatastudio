@@ -54,6 +54,7 @@ export class ConnectionDialogWidget extends Modal {
 	private _noSavedConnection: HTMLElement;
 	private _connectionDetailTitle: HTMLElement;
 	private _connectButton: Button;
+	private _testButton: Button;
 	private _closeButton: Button;
 	private _providerTypeSelectBox: SelectBox;
 	private _newConnectionParams: INewConnectionParams;
@@ -76,6 +77,9 @@ export class ConnectionDialogWidget extends Modal {
 	private _onConnect = new Emitter<IConnectionProfile>();
 	public onConnect: Event<IConnectionProfile> = this._onConnect.event;
 
+	private _onTest = new Emitter<IConnectionProfile>();
+	public onTest: Event<IConnectionProfile> = this._onTest.event;
+
 	private _onShowUiComponent = new Emitter<OnShowUIResponse>();
 	public onShowUiComponent: Event<OnShowUIResponse> = this._onShowUiComponent.event;
 
@@ -86,6 +90,7 @@ export class ConnectionDialogWidget extends Modal {
 	public onResetConnection: Event<void> = this._onResetConnection.event;
 
 	private _connecting = false;
+	private _testing = false;
 
 	constructor(
 		private providerDisplayNameOptions: string[],
@@ -241,9 +246,12 @@ export class ConnectionDialogWidget extends Modal {
 		super.render();
 		attachModalDialogStyler(this, this._themeService);
 		const connectLabel = localize('connectionDialog.connect', "Connect");
+		const testLabel = localize('connectionDialog.test', "Test connection");
 		const cancelLabel = localize('connectionDialog.cancel', "Cancel");
 		this._connectButton = this.addFooterButton(connectLabel, () => this.connect());
 		this._connectButton.enabled = false;
+		this._testButton = this.addFooterButton(testLabel, () => this.testConnect());
+		this._testButton.enabled = false;
 		this._closeButton = this.addFooterButton(cancelLabel, () => this.cancel());
 		this.registerListeners();
 		this.onProviderTypeSelected(this._providerTypeSelectBox.value);
@@ -266,6 +274,7 @@ export class ConnectionDialogWidget extends Modal {
 		// Theme styler
 		this._register(styler.attachSelectBoxStyler(this._providerTypeSelectBox, this._themeService));
 		this._register(attachButtonStyler(this._connectButton, this._themeService));
+		this._register(attachButtonStyler(this._testButton, this._themeService));
 		this._register(attachButtonStyler(this._closeButton, this._themeService));
 
 		this._register(this._providerTypeSelectBox.onDidSelect(selectedProviderType => {
@@ -284,9 +293,21 @@ export class ConnectionDialogWidget extends Modal {
 		if (this._connectButton.enabled) {
 			this._connecting = true;
 			this._connectButton.enabled = false;
+			this._testButton.enabled = false;
 			this._providerTypeSelectBox.disable();
 			this.spinner = true;
 			this._onConnect.fire(element);
+		}
+	}
+
+	private testConnect(element?: IConnectionProfile): void {
+		if (this._testButton.enabled) {
+			this._testing = true;
+			this._testButton.enabled = false;
+			this._connectButton.enabled = false;
+			this._providerTypeSelectBox.disable();
+			this.spinner = true;
+			this._onTest.fire(element);
 		}
 	}
 
@@ -304,8 +325,9 @@ export class ConnectionDialogWidget extends Modal {
 
 	private cancel() {
 		const wasConnecting = this._connecting;
+		const wasTesting = this._testing;
 		this._onCancel.fire();
-		if (!this._databaseDropdownExpanded && !wasConnecting) {
+		if (!this._databaseDropdownExpanded && !wasConnecting && !wasTesting) {
 			this.close();
 		}
 	}
@@ -435,6 +457,14 @@ export class ConnectionDialogWidget extends Modal {
 	}
 
 	/**
+	 * Set the state of the connect button
+	 * @param enabled The state to set the the button
+	 */
+	public set testButtonState(enabled: boolean) {
+		this._testButton.enabled = enabled;
+	}
+
+	/**
 	 * Get the connect button state
 	 */
 	public get connectButtonState(): boolean {
@@ -449,10 +479,10 @@ export class ConnectionDialogWidget extends Modal {
 
 	public resetConnection(): void {
 		this.spinner = false;
-		this._connectButton.enabled = true;
 		this._providerTypeSelectBox.enable();
 		this._onResetConnection.fire();
 		this._connecting = false;
+		this._testing = false;
 	}
 
 	public get newConnectionParams(): INewConnectionParams {

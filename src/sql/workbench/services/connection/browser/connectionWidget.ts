@@ -75,6 +75,10 @@ export class ConnectionWidget extends lifecycle.Disposable {
 	protected _connectionNameInputBox: InputBox;
 	protected _databaseNameInputBox: Dropdown;
 	protected _advancedButton: Button;
+
+	private _connecting: boolean = false;
+	private _testing: boolean = false;
+
 	private static readonly _authTypes: AuthenticationType[] =
 		[AuthenticationType.AzureMFA, AuthenticationType.AzureMFAAndUser, AuthenticationType.Integrated, AuthenticationType.SqlLogin];
 	private static readonly _osByName = {
@@ -315,7 +319,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 	private validateUsername(value: string, isOptionRequired: boolean): boolean {
 		let currentAuthType = this._authTypeSelectBox ? this.getMatchingAuthType(this._authTypeSelectBox.value) : undefined;
 		if (!currentAuthType || currentAuthType === AuthenticationType.SqlLogin) {
-			if (!value && isOptionRequired) {
+			if (!value && isOptionRequired && !this._testing) {
 				return true;
 			}
 		}
@@ -394,6 +398,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 			this._register(this._authTypeSelectBox.onDidSelect(selectedAuthType => {
 				this.onAuthTypeSelected(selectedAuthType.selected);
 				this.setConnectButton();
+				this.setTestButton();
 			}));
 		}
 
@@ -451,6 +456,14 @@ export class ConnectionWidget extends lifecycle.Disposable {
 		}
 		showUsername ? this._callbacks.onSetConnectButton(!!this.serverName && !!this.userName) :
 			this._callbacks.onSetConnectButton(!!this.serverName);
+	}
+
+	private setTestButton(): void {
+		if (this.authType && this.authType === AuthenticationType.SqlLogin) {
+			this._callbacks.onSetTestButton(!!this.serverName);
+		} else {
+			this._callbacks.onSetTestButton(false);
+		}
 	}
 
 	protected onAuthTypeSelected(selectedAuthType: string) {
@@ -595,6 +608,7 @@ export class ConnectionWidget extends lifecycle.Disposable {
 
 	private serverNameChanged(serverName: string) {
 		this.setConnectButton();
+		this.setTestButton();
 		if (serverName.toLocaleLowerCase().indexOf('database.windows.net') > -1) {
 			this._callbacks.onSetAzureTimeOut();
 		}
@@ -717,6 +731,12 @@ export class ConnectionWidget extends lifecycle.Disposable {
 			// 1. Authentication type is SQL Login and no username is provided
 			// 2. No server name is provided
 			this.setConnectButton();
+
+			// Disable test button if -
+			// 1. Authentication type is not SQL Login
+			// 2. No server name is provided
+			this.setTestButton();
+
 			this.focusPasswordIfNeeded();
 		}
 	}
@@ -763,6 +783,28 @@ export class ConnectionWidget extends lifecycle.Disposable {
 		if (this._authTypeSelectBox) {
 			this._authTypeSelectBox.disable();
 		}
+		this._connecting = true;
+	}
+
+	public handleOnTesting(): void {
+		this._focusedBeforeHandleOnConnection = <HTMLElement>document.activeElement;
+		this._advancedButton.enabled = false;
+		this._serverNameInputBox.disable();
+		this._userNameInputBox.disable();
+		this._passwordInputBox.disable();
+		this._connectionNameInputBox.disable();
+		this._rememberPasswordCheckBox.enabled = false;
+		if (this._serverGroupSelectBox) {
+			this._serverGroupSelectBox.disable();
+		}
+		if (this._databaseNameInputBox) {
+			this._databaseNameInputBox.enabled = false;
+		}
+		if (this._authTypeSelectBox) {
+			this._authTypeSelectBox.disable();
+		}
+
+		this._testing = true;
 	}
 
 	public handleResetConnection(): void {
@@ -795,6 +837,11 @@ export class ConnectionWidget extends lifecycle.Disposable {
 		if (this._databaseNameInputBox) {
 			this._databaseNameInputBox.enabled = true;
 		}
+
+		this._connecting = false;
+		this._testing = false;
+		this.setConnectButton();
+		this.setTestButton();
 	}
 
 	public get connectionName(): string {
